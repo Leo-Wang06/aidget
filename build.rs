@@ -45,5 +45,24 @@ fn main() {
         tauri_build::Attributes::new()
             .app_manifest(tauri_build::AppManifest::new().commands(command_names::ALL_COMMANDS)),
     )
-    .expect("cannot build application command permissions")
+    .expect("cannot build application command permissions");
+
+    embed_windows_test_manifest();
 }
+
+#[cfg(windows)]
+fn embed_windows_test_manifest() {
+    // Tauri only embeds this manifest into application binaries. Windows test
+    // harnesses need it too, otherwise the loader fails before main().
+    let manifest =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("windows-test-manifest.xml");
+    println!("cargo:rerun-if-changed={}", manifest.display());
+    println!("cargo:rustc-link-arg-tests=/MANIFEST:EMBED");
+    println!(
+        "cargo:rustc-link-arg-tests=/MANIFESTINPUT:{}",
+        manifest.display()
+    );
+}
+
+#[cfg(not(windows))]
+fn embed_windows_test_manifest() {}
