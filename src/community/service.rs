@@ -20,6 +20,7 @@ use crate::{
         error::{Error, Result},
         utils::atomic_write,
     },
+    settings::{self, GithubToken},
     widgets::{
         model::WidgetMeta,
         package::{validate_package_name, validate_path, WidgetPlatform},
@@ -55,6 +56,7 @@ impl Default for Endpoints {
 pub struct Community {
     http: Http,
     endpoints: Endpoints,
+    github_token: Option<GithubToken>,
 }
 #[derive(Deserialize)]
 struct Branch {
@@ -74,11 +76,24 @@ impl Community {
     pub fn new() -> Result<Self> {
         Self::with_endpoints(Endpoints::default())
     }
+    /// Official endpoints with the token configured in `settings.toml`.
+    pub fn for_store(root: &std::path::Path) -> Result<Self> {
+        let token = settings::load(root)?.github_token;
+        Self::with_endpoints_and_token(Endpoints::default(), token)
+    }
     /// Explicit endpoint injection for bounded local HTTP integration tests.
     pub fn with_endpoints(endpoints: Endpoints) -> Result<Self> {
+        Self::with_endpoints_and_token(endpoints, None)
+    }
+    /// Explicit endpoint and credential injection for bounded HTTP integration tests.
+    pub fn with_endpoints_and_token(
+        endpoints: Endpoints,
+        github_token: Option<GithubToken>,
+    ) -> Result<Self> {
         Ok(Self {
             http: Http::new()?,
             endpoints,
+            github_token,
         })
     }
     fn json<T: serde::de::DeserializeOwned>(&self, url: &str) -> Result<T> {
@@ -93,9 +108,33 @@ impl Community {
         )?)
     }
     fn branch(&self, branch: &str) -> Result<String> {
-        let value: Branch = self.json(&format!("{}/branches/{branch}", self.endpoints.github))?;
+        let value: Branch =
+            self.github_json(&format!("{}/branches/{branch}", self.endpoints.github))?;
         validate_commit(&value.commit.sha)?;
         Ok(value.commit.sha)
+    }
+    fn github_json<T: serde::de::DeserializeOwned>(&self, url: &str) -> Result<T> {
+        Ok(serde_json::from_slice(
+            &self
+                .http
+                .get_github(
+                    url,
+                    MAX_JSON,
+                    self.github_token.as_ref().map(GithubToken::as_str),
+                )
+                .map_err(|e| {
+                    if e.missing {
+                        Error::NotFound(e.message)
+                    } else {
+                        e.into_error()
+                    }
+                })?,
+        )?)
+    }
+    /// Verify that the configured GitHub credential can read the reviewed branch.
+    pub fn verify_github_access(&self) -> Result<()> {
+        self.branch("main")?;
+        Ok(())
     }
     fn registry(&self, commit: &str) -> Result<Arc<Registry>> {
         validate_commit(commit)?;

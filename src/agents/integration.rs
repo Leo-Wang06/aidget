@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::fs;
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
@@ -7,22 +6,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::agents::config::{self, AgentResourceState};
 use crate::agents::registry::{builtin_agents, AgentSpec};
+use crate::agents::skill::{self, SKILL_CONTENT};
 use crate::common::error::{Error, Result};
-use crate::common::utils::atomic_write;
 use crate::widgets::store::Store;
-
-/// The distributable Agent Skill embedded in this binary.
-pub const SKILL_CONTENT: &str = include_str!("../../skills/aidget/SKILL.md");
-
-/// Materialize the embedded Skill under the active aidget data directory.
-pub fn ensure_skill(store: &Store) -> Result<std::path::PathBuf> {
-    let directory = store.skills_dir().join("aidget");
-    let path = directory.join("SKILL.md");
-    if fs::read_to_string(&path).ok().as_deref() != Some(SKILL_CONTENT) {
-        atomic_write(&path, SKILL_CONTENT.as_bytes())?;
-    }
-    Ok(directory)
-}
 
 /// Values and detected Agents the main window needs for integrations.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -87,7 +73,7 @@ static WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 /// Read the current binary, packaged skill and every detected Agent's live state.
 pub fn integration_state() -> Result<IntegrationState> {
     let store = Store::open_default();
-    let skill_directory = ensure_skill(&store)?;
+    let skill_directory = skill::ensure_skill(&store)?;
     state_for(&current_executable()?, &skill_directory)
 }
 
@@ -96,7 +82,7 @@ pub fn set_agent_integration(change: IntegrationChange) -> Result<IntegrationMut
     let executable = current_executable()?;
     let command = executable.to_string_lossy().into_owned();
     let store = Store::open_default();
-    let skill_directory = ensure_skill(&store)?;
+    let skill_directory = skill::ensure_skill(&store)?;
     let agents = builtin_agents()
         .into_iter()
         .filter(AgentSpec::detected)
@@ -109,6 +95,7 @@ pub fn set_agent_integration(change: IntegrationChange) -> Result<IntegrationMut
     let problems = apply_change(
         &selected,
         &command,
+        &skill_directory,
         store.root(),
         change.resource,
         change.enabled,
@@ -124,6 +111,7 @@ pub fn set_agent_integration(change: IntegrationChange) -> Result<IntegrationMut
 pub fn apply_change(
     selected: &[&AgentSpec],
     command: &str,
+    skill_directory: &Path,
     backup_root: &Path,
     resource: IntegrationResource,
     enabled: bool,
@@ -151,13 +139,50 @@ pub fn apply_change(
                 };
                 let path = skill_path(root);
                 let result = handled.entry(path.clone()).or_insert_with(|| {
-                    config::set_skill(&path, SKILL_CONTENT, enabled, backup_root, agent.id)
+                    skill::set_skill(&path, skill_directory, enabled)
                         .map_err(|error| error.to_string())
                 });
                 if let Err(message) = result {
                     problems.push(problem(agent, resource, message));
                 }
             }
+        }
+    }
+    problems
+}
+
+/// Replace every existing Skill copy for a detected Agent with the shared link.
+pub fn migrate_skill_links(source: &Path) -> Vec<AgentProblem> {
+    let agents = builtin_agents()
+        .into_iter()
+        .filter(AgentSpec::detected)
+        .collect::<Vec<_>>();
+    let selected = agents.iter().collect::<Vec<_>>();
+    migrate_existing_skills(&selected, source)
+}
+
+/// Replace existing Skill entries in the supplied Agent set.
+pub fn migrate_existing_skills(selected: &[&AgentSpec], source: &Path) -> Vec<AgentProblem> {
+    let mut problems = Vec::new();
+    let mut handled = HashMap::<std::path::PathBuf, std::result::Result<(), String>>::new();
+    for agent in selected {
+        let Some(root) = &agent.skills else {
+            continue;
+        };
+        let path = skill_path(root);
+        let result = handled.entry(path.clone()).or_insert_with(|| {
+            if !skill::is_automatic_migration_candidate(&path, source)
+                .map_err(|error| error.to_string())?
+            {
+                return Ok(());
+            }
+            if skill::skill_state(&path, source).is_ok_and(|state| state.installed) {
+                return Ok(());
+            }
+            skill::set_skill(&path, source, true).map_err(|error| error.to_string())
+        });
+        if let Err(message) = result {
+            problems.push(problem(agent, IntegrationResource::Skills, message));
         }
     }
     problems
@@ -181,7 +206,7 @@ fn state_for(executable: &Path, skill_directory: &Path) -> Result<IntegrationSta
                     .transpose()?,
                 skills: agent.skills.as_ref().map(|root| {
                     let path = skill_path(root);
-                    config::skill_state(&path, SKILL_CONTENT).unwrap_or_else(|error| {
+                    skill::skill_state(&path, skill_directory).unwrap_or_else(|error| {
                         AgentResourceState {
                             path: path.to_string_lossy().into_owned(),
                             installed: false,

@@ -228,7 +228,7 @@ aidget community install @aidget-community/<id> --json
 
 ### 安全声明
 
-aidget 不保存模型或账户凭据，默认情况下，提示词、回复、密钥和账户不会经过 aidget。
+aidget 不保存模型凭据，提示词、回复和模型密钥不会经过 aidget（主动配置的 Github 访问令牌除外）。
 
 安全漏洞处理响应流程见 [SECURITY.md](SECURITY.md)。
 

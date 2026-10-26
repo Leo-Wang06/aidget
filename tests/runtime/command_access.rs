@@ -12,6 +12,12 @@ use tauri::{
 };
 
 #[test]
+fn github_token_changes_are_reserved_for_the_main_window() {
+    assert!(MAIN_COMMANDS.contains(&"set_github_token"));
+    assert!(!WIDGET_COMMANDS.contains(&"set_github_token"));
+}
+
+#[test]
 fn ipc_rejects_other_window_roles_before_host_reads_or_writes() {
     let effects = Arc::new(Mutex::new(Vec::new()));
     let seen = effects.clone();

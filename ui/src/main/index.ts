@@ -39,6 +39,7 @@ import {
   sortedActiveWidgets,
   sortedDeletedWidgets,
   type DeletedWidgetSummary,
+  type GithubTokenSummary,
   type MainPage,
   type MainState,
   type TrayClickAction,
@@ -99,6 +100,16 @@ const version = document.querySelector<HTMLElement>('[data-version]')!;
 const githubButton = document.querySelector<HTMLButtonElement>('[data-github]')!;
 const autoStart = document.querySelector<HTMLButtonElement>('[data-autostart]')!;
 const language = document.querySelector<HTMLSelectElement>('[data-language]')!;
+const githubTokenControl = document.querySelector<HTMLElement>('[data-github-token-control]')!;
+const githubTokenForm = document.querySelector<HTMLFormElement>('[data-github-token-form]')!;
+const githubTokenInput = document.querySelector<HTMLInputElement>('[data-github-token-input]')!;
+const githubTokenSave = document.querySelector<HTMLButtonElement>('[data-github-token-save]')!;
+const githubTokenConfigured = document.querySelector<HTMLElement>(
+  '[data-github-token-configured]',
+)!;
+const githubTokenMasked = document.querySelector<HTMLElement>('[data-github-token-masked]')!;
+const githubTokenRemove = document.querySelector<HTMLButtonElement>('[data-github-token-remove]')!;
+const githubTokenError = document.querySelector<HTMLElement>('[data-github-token-error]')!;
 const mcpCommandOutput = document.querySelector<HTMLElement>('[data-mcp-command]')!;
 const skillDirectoryOutput = document.querySelector<HTMLElement>('[data-skill-directory]')!;
 const pageDescription = document.querySelector<HTMLElement>('[data-page-description]')!;
@@ -131,6 +142,8 @@ let filter: WidgetFilter = 'all';
 let theme: Theme = 'system';
 let locale: Locale = 'system';
 let trayClickAction: TrayClickAction = platform === 'linux' ? 'menu' : 'window';
+let githubTokenOperation: 'save' | 'remove' | undefined;
+let githubTokenFailure = '';
 let preferencesBusy = false;
 let preferenceWrites: Promise<void> = Promise.resolve();
 let widgetSort: WidgetSortOrder = 'newest';
@@ -148,6 +161,7 @@ const community = createCommunityPage(
   document.querySelector<HTMLElement>('[data-view="community-widgets"]')!,
   () => locale,
   refreshState,
+  () => Boolean(state?.githubToken),
 );
 
 const previewRefresh = createPreviewRefresh(
@@ -196,6 +210,7 @@ function applyLocaleStatic() {
   trayClickControlRoot.setAttribute('aria-label', t('trayClickAction'));
   filterOptions.setAttribute('aria-label', t('widgetFilters'));
   autoStart.setAttribute('aria-label', t('launchAtLogin'));
+  githubTokenInput.placeholder = t('githubTokenPlaceholder');
   document.querySelectorAll<HTMLButtonElement>('[data-window-action]').forEach((button) => {
     button.setAttribute('aria-label', t(button.dataset.windowAction as MessageKey));
   });
@@ -238,6 +253,7 @@ function renderPage() {
   renderDescription();
   filterControl.refresh();
   renderPreferences();
+  renderGithubToken();
 }
 
 function renderDescription() {
@@ -398,6 +414,24 @@ function renderPreferences() {
   });
 }
 
+function renderGithubToken() {
+  const configured = state?.githubToken ?? null;
+  const busy = githubTokenOperation !== undefined;
+  githubTokenForm.hidden = configured !== null;
+  githubTokenConfigured.hidden = configured === null;
+  githubTokenInput.disabled = !state || busy;
+  githubTokenSave.disabled = !state || busy;
+  githubTokenRemove.disabled = busy;
+  githubTokenControl.setAttribute('aria-busy', String(busy));
+  githubTokenMasked.textContent = configured?.masked ?? '';
+  githubTokenSave.textContent = t(githubTokenOperation === 'save' ? 'githubTokenSaving' : 'save');
+  githubTokenRemove.textContent = t(
+    githubTokenOperation === 'remove' ? 'githubTokenRemoving' : 'remove',
+  );
+  githubTokenError.textContent = githubTokenFailure;
+  githubTokenError.hidden = githubTokenFailure.length === 0;
+}
+
 function currentPreferences(): PreferencesSnapshot {
   return { theme, language: locale, trayClickAction, lastPage: page };
 }
@@ -494,6 +528,62 @@ async function setTrayClickAction(action: TrayClickAction) {
   const previous = currentPreferences();
   applyPreferences({ ...previous, trayClickAction: action });
   await persistPreferences(previous);
+}
+
+async function saveGithubToken() {
+  if (!state || githubTokenOperation) {
+    return;
+  }
+  const token = githubTokenInput.value.trim();
+  if (!token) {
+    githubTokenFailure = t('githubTokenRequired');
+    renderGithubToken();
+    githubTokenInput.focus();
+    return;
+  }
+  githubTokenOperation = 'save';
+  githubTokenFailure = '';
+  renderGithubToken();
+  try {
+    const summary = await invoke<GithubTokenSummary | null>('set_github_token', { token });
+    if (!summary) {
+      throw new Error('GitHub token command returned no summary');
+    }
+    state = { ...state, githubToken: summary };
+    githubTokenInput.value = '';
+    community.invalidate();
+  } catch (error) {
+    githubTokenFailure = `${t('githubTokenSaveFailed')}: ${String(error)}`;
+  } finally {
+    githubTokenOperation = undefined;
+    renderGithubToken();
+    if (githubTokenFailure) {
+      githubTokenInput.focus();
+    }
+  }
+}
+
+async function removeGithubToken() {
+  if (!state?.githubToken || githubTokenOperation) {
+    return;
+  }
+  githubTokenOperation = 'remove';
+  githubTokenFailure = '';
+  renderGithubToken();
+  try {
+    await invoke<null>('set_github_token', { token: null });
+    state = { ...state, githubToken: null };
+    githubTokenInput.value = '';
+    community.invalidate();
+  } catch (error) {
+    githubTokenFailure = `${t('githubTokenRemoveFailed')}: ${String(error)}`;
+  } finally {
+    githubTokenOperation = undefined;
+    renderGithubToken();
+    if (state?.githubToken === null) {
+      githubTokenInput.focus();
+    }
+  }
 }
 
 function createView(widget: WidgetSummary): WidgetView {
@@ -826,6 +916,9 @@ function render(next: MainState) {
   if (membershipChanged) {
     community.invalidate();
   }
+  if (state?.githubToken?.masked !== next.githubToken?.masked) {
+    community.invalidate();
+  }
   state = next;
   if (next.broken.length) {
     if (fault.hidden || faultSource === 'broken') {
@@ -1030,6 +1123,20 @@ document.addEventListener('visibilitychange', () => syncPreviewRefresh(true));
 language.addEventListener('change', () => {
   void setLanguage(language.value as Locale);
 });
+githubTokenForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  void saveGithubToken();
+});
+githubTokenInput.addEventListener('input', () => {
+  if (!githubTokenFailure) {
+    return;
+  }
+  githubTokenFailure = '';
+  renderGithubToken();
+});
+githubTokenRemove.addEventListener('click', () => {
+  void removeGithubToken();
+});
 
 document.querySelectorAll<HTMLElement>('[data-drag-region]').forEach((region) => {
   region.addEventListener('pointerdown', (event) => {
@@ -1062,6 +1169,7 @@ createIcons({
 applyTheme(theme);
 renderPreferences();
 applyLocaleStatic();
+renderGithubToken();
 void initializeAutostart().catch((error: unknown) =>
   showFault(`${t('startupFailed')}: ${String(error)}`),
 );

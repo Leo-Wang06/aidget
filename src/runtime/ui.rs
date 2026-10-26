@@ -12,7 +12,9 @@ use tauri::{
 
 use crate::common::error::{Error, Result};
 use crate::runtime::{main_startup::MainStartup, main_window_state};
-use crate::settings::{self, Language, MainPage, Theme, TrayClickAction, UiPreferences};
+use crate::settings::{
+    self, GithubToken, Language, MainPage, Theme, TrayClickAction, UiPreferences,
+};
 use crate::transport::origin;
 use crate::widgets::model::{
     validate_id, Board, DeletedWidgetSummary, DisplayInfo, WidgetDragMode, WidgetFrame,
@@ -60,6 +62,20 @@ pub struct WidgetSummary {
     pub created_at: u64,
 }
 
+/// Non-secret state used to identify the configured GitHub token in the main window.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct GithubTokenSummary {
+    pub masked: String,
+}
+
+impl From<&GithubToken> for GithubTokenSummary {
+    fn from(token: &GithubToken) -> Self {
+        Self {
+            masked: token.masked(),
+        }
+    }
+}
+
 /// Current widget inventory, application version, and native preferences shown
 /// by the main window.
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -73,6 +89,7 @@ pub struct MainState {
     pub language: Language,
     pub tray_click_action: TrayClickAction,
     pub last_page: MainPage,
+    pub github_token: Option<GithubTokenSummary>,
 }
 
 #[derive(Default)]
@@ -413,7 +430,9 @@ fn enabled_widget_ids(store: &Store, board: &Board, archived: &HashSet<String>) 
 
 /// List every valid widget, including widgets that are currently archived.
 pub fn main_widgets(store: &Store) -> Result<MainState> {
-    let preferences = settings::load(store.root())?.preferences();
+    let settings = settings::load(store.root())?;
+    let preferences = settings.preferences();
+    let github_token = settings.github_token.as_ref().map(GithubTokenSummary::from);
     let board = store.load_board()?;
     let archived = main_window_state::archived_widgets(store.root(), &store.widget_ids()?)?;
     let mut widgets = Vec::new();
@@ -452,6 +471,7 @@ pub fn main_widgets(store: &Store) -> Result<MainState> {
         language: preferences.language,
         tray_click_action: preferences.tray_click_action.effective(),
         last_page: preferences.last_page,
+        github_token,
     })
 }
 
@@ -486,6 +506,23 @@ pub fn set_preferences(app: &AppHandle, preferences: UiPreferences) -> Result<()
         return Err(error);
     }
     Ok(())
+}
+
+/// Verify and persist a newly entered GitHub token, or remove the existing one.
+pub fn set_github_token(
+    root: &std::path::Path,
+    token: Option<String>,
+) -> Result<Option<GithubTokenSummary>> {
+    let token = token.map(GithubToken::parse).transpose()?;
+    if let Some(token) = &token {
+        crate::community::service::Community::with_endpoints_and_token(
+            crate::community::service::Endpoints::default(),
+            Some(token.clone()),
+        )?
+        .verify_github_access()?;
+    }
+    settings::save_github_token(root, token.as_ref())?;
+    Ok(token.as_ref().map(GithubTokenSummary::from))
 }
 
 /// Enable or disable a desktop widget without changing its saved position.

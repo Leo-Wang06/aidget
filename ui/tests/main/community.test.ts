@@ -65,11 +65,16 @@ beforeEach(() => {
     return Promise.resolve();
   });
 });
-function page() {
+function page(hasGithubToken = false) {
   const root = document.createElement('section');
   document.body.append(root);
   const installed = vi.fn(async () => {});
-  const page = createCommunityPage(root, () => 'en', installed);
+  const page = createCommunityPage(
+    root,
+    () => 'en',
+    installed,
+    () => hasGithubToken,
+  );
   page.show();
   return { root, page, installed };
 }
@@ -80,14 +85,21 @@ describe('community cards', () => {
     expect(weeklyDownloads(16000, 'en')).toBe('16k');
     expect(weeklyDownloads(16000, 'zh')).toBe('16k');
   });
-  it('shows fallback logo, permissions, operating systems and real zero', async () => {
+  it('keeps discovery cards compact and shows real zero downloads', async () => {
     const { root } = page();
     await vi.waitFor(() =>
       expect(root.querySelector('.community-name')?.textContent).toBe('Clock'),
     );
     expect(root.querySelector('.community-logo-default')).toBeTruthy();
-    expect(root.textContent).toContain('JavaScript');
-    expect(root.textContent).toContain('macOS');
+    const card = root.querySelector('article')!;
+    expect(card.textContent).toContain('Clock');
+    expect(card.textContent).toContain('v1.0.0');
+    expect(card.textContent).not.toContain('A safe desktop clock');
+    expect(card.textContent).not.toContain('JavaScript');
+    expect(card.textContent).not.toContain('macOS');
+    expect(card.textContent).not.toContain('Windows');
+    expect(card.textContent).not.toContain('Linux');
+    expect(card.textContent).not.toContain('https://api.example.com');
     await vi.waitFor(() => expect(root.textContent).toContain('0/week'));
     expect(root.querySelector('iframe')).toBeNull();
   });
@@ -95,8 +107,11 @@ describe('community cards', () => {
     const { root, installed } = page();
     await vi.waitFor(() => expect(root.querySelector('.community-install')).toBeTruthy());
     (root.querySelector('.community-install') as HTMLButtonElement).click();
-    expect(root.querySelector('dialog')?.open).toBe(true);
-    expect(root.querySelector('dialog')?.textContent).toContain('https://api.example.com');
+    const dialog = root.querySelector('dialog')!;
+    expect(dialog.open).toBe(true);
+    expect(dialog.textContent).toContain('A safe desktop clock');
+    expect(dialog.textContent).toContain('JavaScript');
+    expect(dialog.textContent).toContain('https://api.example.com');
     expect(mocks.invoke).not.toHaveBeenCalledWith('community_install', expect.anything());
     (root.querySelector('dialog .community-install') as HTMLButtonElement).click();
     await vi.waitFor(() =>
@@ -107,6 +122,71 @@ describe('community cards', () => {
     );
     await vi.waitFor(() => expect(installed).toHaveBeenCalled());
     expect(root.querySelector('.community-install')?.textContent).toBe('Installed');
+  });
+  it('places the card heading first and pins platform-aware dialog actions below scrolling content', async () => {
+    const { root } = page();
+    await vi.waitFor(() => expect(root.querySelector('.community-install')).toBeTruthy());
+    const card = root.querySelector('article')!;
+    expect(card.firstElementChild?.classList.contains('community-card-heading')).toBe(true);
+
+    (root.querySelector('.community-install') as HTMLButtonElement).click();
+    const dialog = root.querySelector('dialog')!;
+    const content = dialog.querySelector('.community-dialog-content')!;
+    const footer = dialog.querySelector('.community-dialog-footer')!;
+    expect(dialog.firstElementChild).toBe(content);
+    expect(dialog.lastElementChild).toBe(footer);
+    expect(content.querySelector('.community-dialog-actions')).toBeNull();
+    expect(footer.querySelector('.community-dialog-actions')).toBeTruthy();
+    expect(
+      [...dialog.querySelectorAll('.community-platforms li')].map((item) => item.textContent),
+    ).toEqual(['macOS', 'Linux', 'Windows']);
+    expect(dialog.textContent).not.toContain('360 × 220');
+  });
+  it('focuses the dialog itself instead of the close action', async () => {
+    const { root } = page();
+    await vi.waitFor(() => expect(root.querySelector('.community-install')).toBeTruthy());
+    (root.querySelector('.community-install') as HTMLButtonElement).click();
+    const dialog = root.querySelector('dialog')!;
+    const close = dialog.querySelector('.community-dialog-actions button');
+    expect(dialog.tabIndex).toBe(-1);
+    expect(document.activeElement).toBe(dialog);
+    expect(document.activeElement).not.toBe(close);
+  });
+  it('places the detail description after the screenshot gallery', async () => {
+    const { root } = page();
+    await vi.waitFor(() => expect(root.querySelector('.community-install')).toBeTruthy());
+    (root.querySelector('.community-install') as HTMLButtonElement).click();
+    const images = root.querySelector('dialog .community-detail-images')!;
+    const description = root.querySelector('dialog .community-detail-description');
+    expect(description).toBeTruthy();
+    expect(images.nextElementSibling).toBe(description);
+  });
+  it('shows empty permissions and network access in the confirmation only', async () => {
+    const withoutPermissions = structuredClone(snapshot);
+    withoutPermissions.widgets[0].entry.config.permissions = [];
+    withoutPermissions.widgets[0].entry.config.network = [];
+    mocks.invoke.mockImplementation((command: string) =>
+      command === 'community_list' ? Promise.resolve(withoutPermissions) : Promise.resolve([]),
+    );
+    const { root } = page();
+    await vi.waitFor(() => expect(root.querySelector('.community-name')).toBeTruthy());
+    expect(root.querySelector('article')?.textContent).not.toContain('No host permissions');
+    (root.querySelector('.community-install') as HTMLButtonElement).click();
+    const dialog = root.querySelector('dialog')!;
+    expect(dialog.textContent).toContain('No host permissions');
+    expect(dialog.querySelector('ul.community-network')).toBeNull();
+    const network = dialog.querySelector('.community-network-empty')!;
+    expect(network.tagName).toBe('P');
+    expect(network.textContent).toBe('No network access');
+  });
+  it('renders actual network origins in a list', async () => {
+    const { root } = page();
+    await vi.waitFor(() => expect(root.querySelector('.community-install')).toBeTruthy());
+    (root.querySelector('.community-install') as HTMLButtonElement).click();
+    const network = root.querySelector('dialog ul.community-network')!;
+    expect(network).toBeTruthy();
+    expect(network.textContent).toContain('https://api.example.com');
+    expect(root.querySelector('dialog .community-network-empty')).toBeNull();
   });
   it('pins an open confirmation dialog even when the catalogue refreshes', async () => {
     const { root, page: controller } = page();
@@ -169,9 +249,30 @@ describe('community cards', () => {
     );
     const { root } = page();
     await vi.waitFor(() =>
-      expect(root.querySelector('.community-install')?.textContent).toBe('Unsupported OS'),
+      expect(root.querySelector('.community-install')?.textContent).toBe('Incompatible'),
     );
     expect((root.querySelector('.community-install') as HTMLButtonElement).disabled).toBe(true);
     expect(root.querySelector<HTMLElement>('[data-download-count]')?.hidden).toBe(true);
+  });
+  it('suggests configuring a GitHub token when an unauthenticated load fails', async () => {
+    mocks.invoke.mockRejectedValue(new Error('HTTP 403 Forbidden'));
+    const { root } = page(false);
+
+    await vi.waitFor(() => {
+      expect(root.querySelector('.community-status')?.textContent).toContain(
+        'configure a GitHub token',
+      );
+    });
+  });
+  it('does not suggest a GitHub token when community loading fails with one configured', async () => {
+    mocks.invoke.mockRejectedValue(new Error('HTTP 403 Forbidden'));
+    const { root } = page(true);
+
+    await vi.waitFor(() => {
+      expect(root.querySelector('.community-status')?.textContent).toContain('HTTP 403 Forbidden');
+    });
+    expect(root.querySelector('.community-status')?.textContent).not.toContain(
+      'configure a GitHub token',
+    );
   });
 });

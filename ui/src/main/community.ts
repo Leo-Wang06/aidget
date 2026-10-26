@@ -6,6 +6,7 @@ import type {
   CommunitySnapshot,
   DownloadCount,
   PackageAuthor,
+  WidgetPlatform,
 } from '../types/rust';
 import { translate, type Locale, type MessageKey } from './locale';
 import { resolvedLocale } from './preferences';
@@ -24,12 +25,18 @@ export function weeklyDownloads(value: number | null, locale: string) {
 function authorName(author: PackageAuthor | null) {
   return typeof author === 'string' ? author : (author?.name ?? '');
 }
+const platformNames: Record<WidgetPlatform, string> = {
+  macos: 'macOS',
+  windows: 'Windows',
+  linux: 'Linux',
+};
 
 /** Render a community catalogue. Remote HTML never enters this document. */
 export function createCommunityPage(
   root: HTMLElement,
   locale: () => Locale,
   installed: () => Promise<void>,
+  hasGithubToken: () => boolean,
 ) {
   let snapshot: CommunitySnapshot | undefined;
   let loading = false;
@@ -47,14 +54,15 @@ export function createCommunityPage(
   heading.id = 'community-widgets-title';
   const refresh = document.createElement('button');
   refresh.type = 'button';
-  refresh.className = 'community-refresh';
+  refresh.className = 'community-refresh secondary-button';
   const status = document.createElement('p');
   status.className = 'community-status';
   status.setAttribute('role', 'status');
   const grid = document.createElement('div');
-  grid.className = 'community-grid';
+  grid.className = 'widget-grid community-grid';
   const dialog = document.createElement('dialog');
   dialog.className = 'community-dialog';
+  dialog.tabIndex = -1;
   dialog.setAttribute('aria-labelledby', 'community-detail-title');
   header.append(heading, refresh);
   root.replaceChildren(header, status, grid, dialog);
@@ -87,8 +95,8 @@ export function createCommunityPage(
     if (entry.entry.config.logo) {
       const image = document.createElement('img');
       image.alt = '';
-      image.width = 44;
-      image.height = 44;
+      image.width = 32;
+      image.height = 32;
       void mediaUrl(entry, entry.entry.config.logo)
         .then((url) => {
           image.src = url;
@@ -102,9 +110,10 @@ export function createCommunityPage(
   }
   function screenshot(entry: CommunityEntry, path: string, commit = snapshot!.commit) {
     const box = document.createElement('div');
-    box.className = 'community-preview';
+    box.className = 'preview-stage community-preview';
     const image = document.createElement('img');
     image.alt = entry.entry.config.title;
+    image.className = 'preview-image';
     image.width = 720;
     image.height = 440;
     image.decoding = 'async';
@@ -143,7 +152,7 @@ export function createCommunityPage(
   function installAction(entry: CommunityEntry, confirm: boolean, commit = snapshot!.commit) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'community-install';
+    button.className = 'community-install secondary-button';
     button.textContent = actionLabel(entry);
     button.disabled =
       loading || !!installing || entry.installed || entry.idConflict || !entry.supported;
@@ -158,7 +167,7 @@ export function createCommunityPage(
   }
   function permissions(entry: CommunityEntry) {
     const list = document.createElement('ul');
-    list.className = 'community-permissions';
+    list.className = 'community-badges community-permissions';
     const names: Record<string, MessageKey> = {
       script: 'permissionScript',
       location: 'permissionLocation',
@@ -179,21 +188,23 @@ export function createCommunityPage(
   function renderCard(entry: CommunityEntry) {
     const { config, package: pkg } = entry.entry;
     const card = document.createElement('article');
-    card.className = 'community-card';
+    card.className = 'widget-card community-card';
     card.dataset.package = pkg.name;
     const top = document.createElement('div');
-    top.className = 'community-card-heading';
+    top.className = 'widget-info community-card-heading';
     const identity = document.createElement('div');
     identity.className = 'community-identity';
     const name = document.createElement('button');
     name.type = 'button';
-    name.className = 'community-name';
+    name.className = 'widget-title community-name';
     name.textContent = config.title;
     name.disabled = loading || !!installing;
     name.title = config.title;
     name.addEventListener('click', () => showDetails(entry));
     const by = document.createElement('span');
     by.className = 'community-verified';
+    const verifiedLabel = document.createElement('span');
+    verifiedLabel.textContent = t('communityVerified');
     by.append(
       createElement(ShieldCheck, {
         width: 13,
@@ -201,14 +212,11 @@ export function createCommunityPage(
         'stroke-width': 1.7,
         'aria-hidden': 'true',
       }),
-      document.createTextNode(t('communityVerified')),
+      verifiedLabel,
     );
     by.title = authorName(pkg.author);
     identity.append(name, by);
     top.append(logo(entry), identity, installAction(entry, false));
-    const description = document.createElement('p');
-    description.className = 'community-summary';
-    description.textContent = pkg.description;
     const preview = document.createElement('button');
     preview.type = 'button';
     preview.disabled = loading || !!installing;
@@ -216,11 +224,6 @@ export function createCommunityPage(
     preview.setAttribute('aria-label', `${t('communityDetails')}: ${config.title}`);
     preview.addEventListener('click', () => showDetails(entry));
     preview.append(screenshot(entry, config.screenshots[0]));
-    const platforms = document.createElement('p');
-    platforms.className = 'community-platforms';
-    platforms.textContent = config.platforms
-      .map((platform) => ({ macos: 'macOS', windows: 'Windows', linux: 'Linux' })[platform])
-      .join(' · ');
     const footer = document.createElement('div');
     footer.className = 'community-card-footer';
     const count = document.createElement('span');
@@ -229,7 +232,7 @@ export function createCommunityPage(
     const version = document.createElement('span');
     version.textContent = `v${pkg.version}`;
     footer.append(count, version);
-    card.append(top, description, preview, platforms, permissions(entry), footer);
+    card.append(top, preview, footer);
     return card;
   }
   function renderCount(element: HTMLElement, name: string) {
@@ -265,22 +268,39 @@ export function createCommunityPage(
     title.id = 'community-detail-title';
     title.textContent = config.title;
     const description = document.createElement('p');
+    description.className = 'community-detail-description';
     description.textContent = pkg.description;
     const identity = document.createElement('p');
     identity.className = 'community-detail-identity';
     identity.textContent = `${authorName(pkg.author)} · ${pkg.name} · v${pkg.version}`;
     const permissionsTitle = document.createElement('h3');
     permissionsTitle.textContent = t('communityPermissions');
+    const platformsTitle = document.createElement('h3');
+    platformsTitle.textContent = t('communityPlatforms');
+    const platforms = document.createElement('ul');
+    platforms.className = 'community-badges community-platforms';
+    for (const platform of config.platforms) {
+      const item = document.createElement('li');
+      item.textContent = platformNames[platform];
+      platforms.append(item);
+    }
     const networkTitle = document.createElement('h3');
     networkTitle.textContent = t('communityNetwork');
-    const network = document.createElement('ul');
-    for (const origin of config.network.length ? config.network : [t('communityNoNetwork')]) {
-      const item = document.createElement('li');
-      item.textContent = origin;
-      network.append(item);
+    let network: HTMLElement;
+    if (config.network.length) {
+      const list = document.createElement('ul');
+      list.className = 'community-network';
+      for (const origin of config.network) {
+        const item = document.createElement('li');
+        item.textContent = origin;
+        list.append(item);
+      }
+      network = list;
+    } else {
+      network = document.createElement('p');
+      network.className = 'community-network-empty';
+      network.textContent = t('communityNoNetwork');
     }
-    const os = document.createElement('p');
-    os.textContent = `${t('communityPlatforms')}: ${config.platforms.join(' · ')} · ${config.size.width} × ${config.size.height}`;
     const images = document.createElement('div');
     images.className = 'community-detail-images';
     images.append(...config.screenshots.map((path) => screenshot(entry, path, commit)));
@@ -288,6 +308,7 @@ export function createCommunityPage(
     actions.className = 'community-dialog-actions';
     const close = document.createElement('button');
     close.type = 'button';
+    close.className = 'secondary-button';
     close.textContent = t('communityClose');
     close.addEventListener('click', () => dialog.close());
     actions.append(close, installAction(entry, true, commit));
@@ -295,25 +316,31 @@ export function createCommunityPage(
     error.textContent = installError;
     error.className = 'community-install-error';
     error.setAttribute('role', 'alert');
-    dialog.replaceChildren(
+    const content = document.createElement('div');
+    content.className = 'community-dialog-content';
+    content.append(
       title,
       identity,
-      description,
       images,
-      os,
+      description,
+      platformsTitle,
+      platforms,
       permissionsTitle,
       permissions(entry),
       networkTitle,
       network,
-      error,
-      actions,
     );
+    const footer = document.createElement('div');
+    footer.className = 'community-dialog-footer';
+    footer.append(error, actions);
+    dialog.replaceChildren(content, footer);
   }
   function showDetails(entry: CommunityEntry) {
     installError = '';
     selected = { entry, commit: snapshot!.commit };
     renderDetails(entry, selected.commit);
     dialog.showModal();
+    dialog.focus();
   }
   async function install(entry: CommunityEntry, commit: string) {
     if (!snapshot || installing) {
@@ -369,7 +396,9 @@ export function createCommunityPage(
         });
     } catch (error) {
       snapshot = undefined;
-      status.textContent = `${t('communityLoadFailed')}: ${String(error)}`;
+      status.textContent = `${t('communityLoadFailed')}: ${String(error)}${
+        hasGithubToken() ? '' : `\n${t('communityGithubTokenHint')}`
+      }`;
     } finally {
       loading = false;
       render();

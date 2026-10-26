@@ -1,16 +1,61 @@
+use std::fmt;
 use std::fs;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use toml_edit::{value, DocumentMut};
 
 use crate::common::error::{Error, Result};
-use crate::common::utils::atomic_write;
+use crate::common::utils::atomic_write_private;
 
 pub const SETTINGS_FILE: &str = "settings.toml";
 pub const DEFAULT_SCREENSHOT_RETENTION: usize = 30;
 pub const DEFAULT_TRASH_RETENTION: usize = 20;
+const MIN_GITHUB_TOKEN_LENGTH: usize = 20;
+const MAX_GITHUB_TOKEN_LENGTH: usize = 512;
+
+/// A GitHub personal access token that never renders its raw value in debug output.
+#[derive(Clone, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct GithubToken(String);
+
+impl GithubToken {
+    /// Validate and normalize a pasted token without retaining surrounding whitespace.
+    pub fn parse(raw: impl Into<String>) -> Result<Self> {
+        let token = raw.into().trim().to_string();
+        if !(MIN_GITHUB_TOKEN_LENGTH..=MAX_GITHUB_TOKEN_LENGTH).contains(&token.len())
+            || !token.bytes().all(|byte| byte.is_ascii_graphic())
+        {
+            return Err(Error::InvalidParams("invalid GitHub token".to_string()));
+        }
+        Ok(Self(token))
+    }
+
+    /// Render only the stable prefix and suffix needed to identify a configured token.
+    pub fn masked(&self) -> String {
+        format!("ghp_…{}", &self.0[self.0.len() - 4..])
+    }
+
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Debug for GithubToken {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("GithubToken([REDACTED])")
+    }
+}
+
+impl<'de> Deserialize<'de> for GithubToken {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Self::parse(String::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+    }
+}
 
 /// Main-window navigation destinations persisted between launches.
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -153,6 +198,9 @@ pub struct Settings {
     /// Most recently opened main-window destination.
     #[serde(default)]
     pub last_page: MainPage,
+    /// Optional GitHub personal access token used only for GitHub API requests.
+    #[serde(default)]
+    pub github_token: Option<GithubToken>,
 }
 
 impl Default for Settings {
@@ -166,6 +214,7 @@ impl Default for Settings {
             language: Language::default(),
             tray_click_action: TrayClickAction::default(),
             last_page: MainPage::default(),
+            github_token: None,
         }
     }
 }
@@ -187,7 +236,7 @@ impl Settings {
 pub fn ensure(root: &Path) -> Result<()> {
     let path = settings_path(root);
     if !path.exists() {
-        atomic_write(&path, default_document().as_bytes())?;
+        atomic_write_private(&path, default_document().as_bytes())?;
         return Ok(());
     }
 
@@ -206,7 +255,7 @@ pub fn ensure(root: &Path) -> Result<()> {
     insert_missing(&mut document, "last_page", MainPage::Integrations.as_str());
     let next = document.to_string();
     if next != text {
-        atomic_write(&path, next.as_bytes())?;
+        atomic_write_private(&path, next.as_bytes())?;
     }
     Ok(())
 }
@@ -232,7 +281,23 @@ pub fn save_preferences(root: &Path, preferences: UiPreferences) -> Result<()> {
     document["language"] = value(preferences.language.as_str());
     document["tray_click_action"] = value(preferences.tray_click_action.as_str());
     document["last_page"] = value(preferences.last_page.as_str());
-    atomic_write(&path, document.to_string().as_bytes())
+    atomic_write_private(&path, document.to_string().as_bytes())
+}
+
+/// Save or remove the optional GitHub token without changing other settings.
+pub fn save_github_token(root: &Path, token: Option<&GithubToken>) -> Result<()> {
+    let path = settings_path(root);
+    let text = fs::read_to_string(&path)?;
+    let mut document = text
+        .parse::<DocumentMut>()
+        .map_err(|error| Error::Other(format!("toml: {error}")))?;
+    match token {
+        Some(token) => document["github_token"] = value(token.as_str()),
+        None => {
+            document.remove("github_token");
+        }
+    }
+    atomic_write_private(&path, document.to_string().as_bytes())
 }
 
 fn settings_path(root: &Path) -> PathBuf {
@@ -263,6 +328,9 @@ language = \"system\"\n\
 tray_click_action = \"window\"\n\
 \n\
 # Main-window destination restored on launch.\n\
-last_page = \"integrations\"\n"
+last_page = \"integrations\"\n\
+\n\
+# Optional GitHub personal access token for authenticated API requests.\n\
+# This value is stored in plain text if configured.\n"
     )
 }

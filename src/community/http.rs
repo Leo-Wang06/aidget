@@ -1,7 +1,13 @@
 //! Bounded HTTP reads with explicit transport failures for the two-channel policy.
 use crate::common::error::{Error, Result};
-use reqwest::blocking::Client;
+use reqwest::{
+    blocking::{Client, RequestBuilder},
+    header::{ACCEPT, AUTHORIZATION},
+};
 use std::{io::Read, time::Duration};
+
+const GITHUB_ACCEPT: &str = "application/vnd.github+json";
+const GITHUB_API_VERSION: &str = "2022-11-28";
 
 /// Only missing content and transient network errors permit switching channels.
 #[derive(Debug)]
@@ -40,7 +46,34 @@ impl Http {
     }
     /// Read a public resource, refusing oversized bodies even without Content-Length.
     pub fn get(&self, url: &str, max: usize) -> std::result::Result<Vec<u8>, FetchError> {
-        let response = self.client.get(url).send().map_err(|e| FetchError {
+        self.send(self.client.get(url), url, max)
+    }
+
+    /// Read a GitHub API resource with the optional user token.
+    pub fn get_github(
+        &self,
+        url: &str,
+        max: usize,
+        token: Option<&str>,
+    ) -> std::result::Result<Vec<u8>, FetchError> {
+        let mut request = self
+            .client
+            .get(url)
+            .header(ACCEPT, GITHUB_ACCEPT)
+            .header("X-GitHub-Api-Version", GITHUB_API_VERSION);
+        if let Some(token) = token {
+            request = request.header(AUTHORIZATION, format!("Bearer {token}"));
+        }
+        self.send(request, url, max)
+    }
+
+    fn send(
+        &self,
+        request: RequestBuilder,
+        url: &str,
+        max: usize,
+    ) -> std::result::Result<Vec<u8>, FetchError> {
+        let response = request.send().map_err(|e| FetchError {
             unavailable: !e.is_redirect() && (e.is_timeout() || e.is_connect() || e.is_request()),
             missing: false,
             message: format!("GET {url}: {e}"),

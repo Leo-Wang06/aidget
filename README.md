@@ -228,7 +228,7 @@ Declare the exact HTTPS origins a widget can access in its `config.json` using `
 
 ### Security statement
 
-aidget does not store model or account credentials. By default, prompts, replies, keys, and accounts do not pass through aidget.
+aidget does not store model credentials, and prompts, replies and model keys do not pass through aidget (except for proactively configured GitHub access tokens).
 
 See [SECURITY.md](SECURITY.md) for the vulnerability reporting process.
 

@@ -4,6 +4,7 @@ use aidget::{
         model::*,
         service::{encoded_package, split_spec, Community, Endpoints},
     },
+    settings::GithubToken,
     widgets::{
         package::{WidgetConfig, WidgetPlatform},
         store::Store,
@@ -30,6 +31,7 @@ struct Server {
     base: String,
     routes: Arc<Mutex<Routes>>,
     requests: Arc<Mutex<Vec<String>>>,
+    authorizations: Arc<Mutex<Vec<(String, Option<String>)>>>,
     stop: Arc<AtomicBool>,
     thread: Option<thread::JoinHandle<()>>,
 }
@@ -39,8 +41,14 @@ impl Server {
         let address = listener.local_addr().unwrap();
         let routes = Arc::new(Mutex::new(BTreeMap::<String, (u16, Vec<u8>)>::new()));
         let requests = Arc::new(Mutex::new(vec![]));
+        let authorizations = Arc::new(Mutex::new(vec![]));
         let stop = Arc::new(AtomicBool::new(false));
-        let (r, q, s) = (routes.clone(), requests.clone(), stop.clone());
+        let (r, q, a, s) = (
+            routes.clone(),
+            requests.clone(),
+            authorizations.clone(),
+            stop.clone(),
+        );
         let handle = thread::spawn(move || {
             for stream in listener.incoming() {
                 if s.load(Ordering::SeqCst) {
@@ -51,7 +59,13 @@ impl Server {
                 let n = stream.read(&mut buffer).unwrap();
                 let request = String::from_utf8_lossy(&buffer[..n]);
                 let path = request.split_whitespace().nth(1).unwrap_or("/").to_owned();
+                let authorization = request.lines().find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("authorization")
+                        .then(|| value.trim().to_owned())
+                });
                 q.lock().unwrap().push(path.clone());
+                a.lock().unwrap().push((path.clone(), authorization));
                 let (status, body) = r
                     .lock()
                     .unwrap()
@@ -71,6 +85,7 @@ impl Server {
             base: format!("http://{address}"),
             routes,
             requests,
+            authorizations,
             stop,
             thread: Some(handle),
         }
@@ -85,12 +100,18 @@ impl Server {
             .insert(path.into(), (status, bytes));
     }
     fn client(&self) -> Community {
-        Community::with_endpoints(Endpoints {
-            github: self.base.clone(),
-            raw: self.base.clone(),
-            npm: self.base.clone(),
-            downloads: self.base.clone(),
-        })
+        self.client_with_token(None)
+    }
+    fn client_with_token(&self, token: Option<&GithubToken>) -> Community {
+        Community::with_endpoints_and_token(
+            Endpoints {
+                github: self.base.clone(),
+                raw: self.base.clone(),
+                npm: self.base.clone(),
+                downloads: self.base.clone(),
+            },
+            token.cloned(),
+        )
         .unwrap()
     }
 }
@@ -180,6 +201,70 @@ fn exact_versions_are_required_and_prefix_lookalikes_remain_third_party() {
     assert!(split_spec("x@^1.0.0").is_err());
     assert!(split_spec("https://example.com/x").is_err());
 }
+
+#[test]
+fn github_api_requests_use_the_configured_bearer_token_only() {
+    let server = Server::new();
+    fixture(&server);
+    let token = GithubToken::parse("samplevalueABCDEFGHIJKLMNOPQRSTUVWXYZ").unwrap();
+    let (_root, store) = store();
+
+    server.client_with_token(Some(&token)).list(&store).unwrap();
+    server
+        .client_with_token(Some(&token))
+        .install_reviewed(&store, MAIN, NAME)
+        .unwrap();
+    server.put(
+        &format!("/downloads/point/last-week/{}", encoded_package(NAME)),
+        200,
+        json!({"downloads": 7}),
+    );
+    server
+        .client_with_token(Some(&token))
+        .downloads(&store, &[NAME.to_string()])
+        .unwrap();
+
+    let authorizations = server.authorizations.lock().unwrap().clone();
+    assert!(authorizations.iter().any(|(path, authorization)| {
+        path == "/branches/main"
+            && authorization.as_deref() == Some("Bearer samplevalueABCDEFGHIJKLMNOPQRSTUVWXYZ")
+    }));
+    assert!(authorizations
+        .iter()
+        .filter(|(path, _)| path != "/branches/main")
+        .all(|(_, authorization)| authorization.is_none()));
+}
+
+#[test]
+fn anonymous_github_requests_never_send_an_authorization_header() {
+    let server = Server::new();
+    fixture(&server);
+    let (_root, store) = store();
+
+    server.client().list(&store).unwrap();
+
+    assert!(server
+        .authorizations
+        .lock()
+        .unwrap()
+        .iter()
+        .all(|(_, authorization)| authorization.is_none()));
+}
+
+#[test]
+fn rejecting_github_credentials_reports_the_status_without_a_fallback() {
+    let server = Server::new();
+    server.put("/branches/main", 403, json!({"message": "rate limited"}));
+    let token = GithubToken::parse("samplevalueABCDEFGHIJKLMNOPQRSTUVWXYZ").unwrap();
+
+    let error = server
+        .client_with_token(Some(&token))
+        .verify_github_access()
+        .unwrap_err();
+
+    assert!(error.to_string().contains("HTTP 403 Forbidden"));
+}
+
 #[test]
 fn installs_the_reviewed_npm_version_and_rejects_a_second_copy() {
     let server = Server::new();

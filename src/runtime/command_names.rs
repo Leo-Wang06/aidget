@@ -13,6 +13,7 @@ command_groups! {
     MAIN_COMMANDS: [
         "main_state", "main_painted", "main_widget_cached_preview",
         "integration_state", "set_agent_integration", "set_preferences",
+        "set_github_token",
         "set_widget_enabled", "delete_widget", "restore_widget",
         "deleted_widget_preview", "purge_deleted_widget", "main_widget_preview",
         "community_list", "community_media", "community_install", "community_downloads",

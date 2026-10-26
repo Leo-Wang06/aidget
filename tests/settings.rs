@@ -1,8 +1,8 @@
 use std::fs;
 
 use aidget::settings::{
-    ensure, load, save_preferences, Language, MainPage, Theme, TrayClickAction, UiPreferences,
-    SETTINGS_FILE,
+    ensure, load, save_github_token, save_preferences, GithubToken, Language, MainPage, Theme,
+    TrayClickAction, UiPreferences, SETTINGS_FILE,
 };
 use tempfile::TempDir;
 
@@ -25,6 +25,7 @@ fn settings_are_created_with_retention_and_preference_defaults() {
     assert_eq!(settings.language, Language::System);
     assert_eq!(settings.tray_click_action, TrayClickAction::Window);
     assert_eq!(settings.last_page, MainPage::Integrations);
+    assert_eq!(settings.github_token, None);
 
     let document = fs::read_to_string(root.join(SETTINGS_FILE)).unwrap();
     assert!(document.contains("screenshot_retention = 30"));
@@ -98,6 +99,93 @@ tray_click_action = \"window\"\n",
     assert!(document.contains("last_page = \"about\""));
     assert_eq!(load(&root).unwrap().preferences(), preferences);
     drop(dir);
+}
+
+#[test]
+fn saving_and_removing_a_github_token_preserves_other_settings() {
+    let (dir, root) = root();
+    let path = root.join(SETTINGS_FILE);
+    let token = GithubToken::parse("samplevalueABCDEFGHIJKLMNOPQRSTUVWXYZ").unwrap();
+
+    save_github_token(&root, Some(&token)).unwrap();
+
+    let document = fs::read_to_string(&path).unwrap();
+    assert!(document.contains("github_token = \"samplevalueABCDEFGHIJKLMNOPQRSTUVWXYZ\""));
+    assert!(document.contains("# Maximum number of screenshots"));
+    assert!(document.contains("screenshot_retention = 30"));
+    assert!(document.contains("last_page = \"integrations\""));
+    assert_eq!(load(&root).unwrap().github_token, Some(token));
+
+    save_github_token(&root, None).unwrap();
+
+    let document = fs::read_to_string(&path).unwrap();
+    assert!(!document.contains("github_token"));
+    assert!(document.contains("# Maximum number of screenshots"));
+    assert!(document.contains("trash_retention = 20"));
+    assert!(document.contains("theme = \"system\""));
+    assert_eq!(load(&root).unwrap().github_token, None);
+    drop(dir);
+}
+
+#[cfg(unix)]
+#[test]
+fn settings_writes_use_owner_only_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().to_path_buf();
+    let path = root.join(SETTINGS_FILE);
+    ensure(&root).unwrap();
+    assert_eq!(
+        fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+
+    let preferences = UiPreferences {
+        theme: Theme::Dark,
+        language: Language::ZhCn,
+        tray_click_action: TrayClickAction::Menu,
+        last_page: MainPage::About,
+    };
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+    save_preferences(&root, preferences).unwrap();
+    assert_eq!(
+        fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+
+    let token = GithubToken::parse("samplevalueABCDEFGHIJKLMNOPQRSTUVWXYZ").unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+    save_github_token(&root, Some(&token)).unwrap();
+    assert_eq!(
+        fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+    save_github_token(&root, None).unwrap();
+    assert_eq!(
+        fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+}
+
+#[test]
+fn github_tokens_reject_ambiguous_or_unsafe_values_and_redact_debug_output() {
+    let token = GithubToken::parse("  samplevalueABCDEFGHIJKLMNOPQRSTUVWXYZ  ").unwrap();
+    assert_eq!(token.masked(), "ghp_…WXYZ");
+    assert!(!format!("{token:?}").contains("samplevalueABCDEFGHIJKLMNOPQRSTUVWXYZ"));
+
+    for invalid in [
+        "",
+        "short",
+        "ghp_1234567890 abcdefghijklmnopqrstuvwxyz",
+        "ghp_1234567890\nabcdefghijklmnopqrstuvwxyz",
+        "ghp_1234567890\tabcdefghijklmnopqrstuvwxyz",
+    ] {
+        assert!(GithubToken::parse(invalid).is_err(), "{invalid:?}");
+    }
+    assert!(GithubToken::parse("x".repeat(513)).is_err());
 }
 
 #[test]

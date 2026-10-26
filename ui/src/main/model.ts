@@ -32,6 +32,11 @@ export interface MainState {
   language: Locale;
   trayClickAction: TrayClickAction;
   lastPage: MainPage;
+  githubToken: GithubTokenSummary | null;
+}
+
+export interface GithubTokenSummary {
+  masked: string;
 }
 
 export type MainPage = 'local-widgets' | 'community-widgets' | 'integrations' | 'general' | 'about';

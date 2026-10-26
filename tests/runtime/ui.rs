@@ -3,10 +3,12 @@ use std::collections::{HashMap, HashSet};
 use aidget::runtime::main_window_state;
 use aidget::runtime::ui::{
     cached_preview, content_token, html_widget_surface, is_relevant, main_widgets, place_frame,
-    record_revision, require_main_window_label, retain_widget_revisions, MainState, WidgetSummary,
+    record_revision, require_main_window_label, retain_widget_revisions,
+    set_github_token as change_github_token, GithubTokenSummary, MainState, WidgetSummary,
 };
 use aidget::settings::{
-    save_preferences, Language, MainPage, Theme, TrayClickAction, UiPreferences,
+    save_github_token, save_preferences, GithubToken, Language, MainPage, Theme, TrayClickAction,
+    UiPreferences,
 };
 use aidget::widgets::model::{DeletedWidgetSummary, WidgetFrame, WidgetSurface};
 use aidget::widgets::store::{Store, WidgetEdit, CONFIG_FILE};
@@ -305,6 +307,9 @@ fn main_state_exposes_widget_metadata_in_camel_case() {
         language: Language::ZhCn,
         tray_click_action: TrayClickAction::Window,
         last_page: MainPage::Integrations,
+        github_token: Some(GithubTokenSummary {
+            masked: "ghp_…WXYZ".to_string(),
+        }),
     })
     .unwrap();
 
@@ -319,6 +324,47 @@ fn main_state_exposes_widget_metadata_in_camel_case() {
     assert_eq!(value["language"], "zh-CN");
     assert_eq!(value["trayClickAction"], "window");
     assert_eq!(value["lastPage"], "integrations");
+    assert_eq!(value["githubToken"]["masked"], "ghp_…WXYZ");
+    assert!(!value
+        .to_string()
+        .contains("samplevalueABCDEFGHIJKLMNOPQRSTUVWXYZ"));
+}
+
+#[test]
+fn main_state_exposes_only_the_configured_token_prefix_and_suffix() {
+    let dir = TempDir::new().unwrap();
+    let store = Store::new(dir.path());
+    store.ensure_layout().unwrap();
+    let token = GithubToken::parse("samplevalueABCDEFGHIJKLMNOPQRSTUVWXYZ").unwrap();
+    save_github_token(store.root(), Some(&token)).unwrap();
+
+    let value = serde_json::to_value(main_widgets(&store).unwrap()).unwrap();
+
+    assert_eq!(value["githubToken"]["masked"], "ghp_…WXYZ");
+    assert!(!value
+        .to_string()
+        .contains("samplevalueABCDEFGHIJKLMNOPQRSTUVWXYZ"));
+}
+
+#[test]
+fn failed_github_token_changes_keep_the_existing_token() {
+    let dir = TempDir::new().unwrap();
+    let store = Store::new(dir.path());
+    store.ensure_layout().unwrap();
+    let token = GithubToken::parse("samplevalueABCDEFGHIJKLMNOPQRSTUVWXYZ").unwrap();
+    save_github_token(store.root(), Some(&token)).unwrap();
+
+    assert!(change_github_token(store.root(), Some("short".into())).is_err());
+    assert_eq!(
+        aidget::settings::load(store.root()).unwrap().github_token,
+        Some(token)
+    );
+
+    assert_eq!(change_github_token(store.root(), None).unwrap(), None);
+    assert_eq!(
+        aidget::settings::load(store.root()).unwrap().github_token,
+        None
+    );
 }
 
 #[test]

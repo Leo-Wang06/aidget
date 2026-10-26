@@ -67,6 +67,7 @@ webkit2gtk = "2.0"
 zbus = { version = "6.1.0", default-features = false, features = ["tokio", "proxy"] }
 
 [target.'cfg(windows)'.dependencies]
+junction = "2.1.0"
 webview2-com = "0.39"
 windows = { version = "0.62", features = [
   "Devices_Geolocation",

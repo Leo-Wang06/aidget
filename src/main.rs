@@ -91,7 +91,13 @@ fn run_ui(show_main_window: bool, detach: bool) -> Result<()> {
         return aidget::runtime::process::spawn_ui();
     }
 
-    aidget::agents::integration::ensure_skill(&store)?;
+    let skill_directory = aidget::agents::skill::ensure_skill(&store)?;
+    for problem in aidget::agents::integration::migrate_skill_links(&skill_directory) {
+        eprintln!(
+            "agent skill migration {}: {}",
+            problem.agent_id, problem.message
+        );
+    }
     let endpoint = aidget::transport::ipc::Endpoint::new(store.socket_path());
     let listener = endpoint
         .bind()

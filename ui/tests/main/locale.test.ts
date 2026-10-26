@@ -18,6 +18,27 @@ describe('main window locale', () => {
     expect(translate('zh', 'sortNewestDescription')).toBe('按创建时间倒序排列');
   });
 
+  it('translates GitHub token network settings in both supported languages', () => {
+    expect(translate('zh', 'network')).toBe('网络');
+    expect(translate('zh', 'githubToken')).toBe('GitHub 令牌');
+    expect(translate('zh', 'githubTokenDescription')).toBe(
+      '用于社区组件读取和安装，当由于 Github API 限制无法拉取社区组件时配置。',
+    );
+    expect(translate('zh', 'githubTokenPlaceholder')).toBe('ghp_xxx');
+    expect(translate('zh', 'communityGithubTokenHint')).toContain('配置 GitHub 令牌');
+    expect(translate('en', 'network')).toBe('Network');
+    expect(translate('en', 'githubToken')).toBe('GitHub token');
+  });
+
+  it('uses compact community action labels', () => {
+    expect(translate('zh', 'communityInstalling')).toBe('安装中');
+    expect(translate('zh', 'communityIdConflict')).toBe('已存在');
+    expect(translate('zh', 'communityUnsupported')).toBe('不兼容');
+    expect(translate('en', 'communityInstalling')).toBe('Installing');
+    expect(translate('en', 'communityIdConflict')).toBe('Already exists');
+    expect(translate('en', 'communityUnsupported')).toBe('Incompatible');
+  });
+
   it('labels integrations, local widgets, and navigation groups', () => {
     expect(translate('zh', 'integrations')).toBe('接入');
     expect(translate('zh', 'mcpAndSkills')).toBe('MCP 与技能');
@@ -30,6 +51,7 @@ describe('main window locale', () => {
     expect(translate('zh', 'widgetsGroup')).toBe('小组件');
     expect(translate('zh', 'localWidgets')).toBe('本地组件');
     expect(translate('zh', 'communityWidgets')).toBe('社区组件');
+    expect(translate('zh', 'communityNoNetwork')).toBe('无网络权限');
     expect(translate('en', 'widgetsGroup')).toBe('Widgets');
     expect(translate('zh', 'agentAll')).toBe('全部');
     expect(translate('zh', 'integrationNoAgents')).toBe('没有检测到可接入此资源的 Agent。');

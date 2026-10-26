@@ -103,7 +103,7 @@ pub async fn dispatch(
     match method {
         "community_list" => {
             let snapshot = tauri::async_runtime::spawn_blocking(move || {
-                crate::community::service::Community::new()?.list(&store)
+                crate::community::service::Community::for_store(store.root())?.list(&store)
             })
             .await
             .map_err(|e| Error::Other(e.to_string()))??;
@@ -116,7 +116,8 @@ pub async fn dispatch(
                 .to_owned();
             let cloned = store.clone();
             let meta = tauri::async_runtime::spawn_blocking(move || {
-                crate::community::service::Community::new()?.install(&cloned, &spec)
+                crate::community::service::Community::for_store(cloned.root())?
+                    .install(&cloned, &spec)
             })
             .await
             .map_err(|e| Error::Other(e.to_string()))??;

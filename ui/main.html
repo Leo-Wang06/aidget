@@ -278,6 +278,50 @@
                 </div>
               </div>
             </section>
+            <section class="settings-group" aria-labelledby="network-title">
+              <h2 class="settings-group-title" id="network-title" data-message="network"></h2>
+              <div class="settings-list">
+                <div class="settings-row github-token-row">
+                  <div class="setting-copy">
+                    <label
+                      class="setting-label"
+                      for="github-token-input"
+                      data-message="githubToken"
+                    ></label>
+                    <span class="setting-note" data-message="githubTokenDescription"></span>
+                  </div>
+                  <div class="github-token-control" data-github-token-control>
+                    <form class="github-token-form" data-github-token-form>
+                      <input
+                        class="github-token-input"
+                        id="github-token-input"
+                        data-github-token-input
+                        type="password"
+                        autocomplete="off"
+                        autocapitalize="off"
+                        spellcheck="false"
+                      />
+                      <button
+                        class="secondary-button"
+                        type="submit"
+                        data-github-token-save
+                        data-message="save"
+                      ></button>
+                    </form>
+                    <div class="github-token-configured" data-github-token-configured hidden>
+                      <code class="github-token-masked" data-github-token-masked></code>
+                      <button
+                        class="secondary-button"
+                        type="button"
+                        data-github-token-remove
+                        data-message="remove"
+                      ></button>
+                    </div>
+                    <p class="github-token-error" data-github-token-error role="alert" hidden></p>
+                  </div>
+                </div>
+              </div>
+            </section>
           </div>
         </section>
 
@@ -296,7 +340,12 @@
             <div class="settings-row community-row">
               <span class="setting-label" data-message="community"></span>
               <div class="community-actions">
-                <button type="button" data-github data-message="github"></button>
+                <button
+                  class="secondary-button"
+                  type="button"
+                  data-github
+                  data-message="github"
+                ></button>
               </div>
             </div>
           </div>

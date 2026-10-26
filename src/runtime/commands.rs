@@ -31,6 +31,7 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         integration_state,
         set_agent_integration,
         set_preferences,
+        set_github_token,
         community_list,
         community_media,
         community_install,
@@ -163,6 +164,21 @@ async fn set_preferences(
 ) -> std::result::Result<(), String> {
     ui::require_main_window_label(window.label()).map_err(|error| error.to_string())?;
     ui::set_preferences(&app, preferences).map_err(|error| error.to_string())
+}
+
+/// Validate, save, or remove the GitHub token used by community API requests.
+#[tauri::command]
+async fn set_github_token(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    token: Option<String>,
+) -> std::result::Result<Option<ui::GithubTokenSummary>, String> {
+    ui::require_main_window_label(window.label()).map_err(|error| error.to_string())?;
+    let root = app.state::<ui::UiState>().root.lock().unwrap().clone();
+    tauri::async_runtime::spawn_blocking(move || ui::set_github_token(&root, token))
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -300,7 +316,7 @@ async fn community_list(
     ui::require_main_window_label(window.label()).map_err(|e| e.to_string())?;
     let root = app.state::<ui::UiState>().root.lock().unwrap().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        crate::community::service::Community::new()?.list(&Store::new(root))
+        crate::community::service::Community::for_store(&root)?.list(&Store::new(root))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -310,13 +326,15 @@ async fn community_list(
 #[tauri::command]
 async fn community_media(
     window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
     commit: String,
     package: String,
     path: String,
 ) -> std::result::Result<String, String> {
     ui::require_main_window_label(window.label()).map_err(|e| e.to_string())?;
+    let root = app.state::<ui::UiState>().root.lock().unwrap().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        crate::community::service::Community::new()?.media(&commit, &package, &path)
+        crate::community::service::Community::for_store(&root)?.media(&commit, &package, &path)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -333,7 +351,7 @@ async fn community_install(
     ui::require_main_window_label(window.label()).map_err(|e| e.to_string())?;
     let root = app.state::<ui::UiState>().root.lock().unwrap().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        crate::community::service::Community::new()?.install_reviewed(
+        crate::community::service::Community::for_store(&root)?.install_reviewed(
             &Store::new(root),
             &commit,
             &package,
@@ -355,7 +373,8 @@ async fn community_downloads(
     ui::require_main_window_label(window.label()).map_err(|e| e.to_string())?;
     let root = app.state::<ui::UiState>().root.lock().unwrap().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        crate::community::service::Community::new()?.downloads(&Store::new(root), &packages)
+        crate::community::service::Community::for_store(&root)?
+            .downloads(&Store::new(root), &packages)
     })
     .await
     .map_err(|e| e.to_string())?

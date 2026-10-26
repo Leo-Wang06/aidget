@@ -1,6 +1,6 @@
 use std::fs;
 
-use aidget::agents::config::{mcp_state, set_mcp, set_skill, skill_state, McpFormat, McpTarget};
+use aidget::agents::config::{mcp_state, set_mcp, McpFormat, McpTarget};
 use tempfile::tempdir;
 
 #[test]
@@ -62,42 +62,6 @@ fn opencode_and_cline_shapes_are_read_back() {
     };
     set_mcp(&target, "/a", true, temp.path(), "cline").unwrap();
     assert!(mcp_state(&target, "/a").unwrap().installed);
-}
-
-#[test]
-fn skill_install_and_remove_only_the_exact_copy() {
-    let temp = tempdir().unwrap();
-    let path = temp.path().join("skills/aidget");
-    set_skill(&path, "skill", true, temp.path(), "codex").unwrap();
-    assert!(skill_state(&path, "skill").unwrap().installed);
-    set_skill(&path, "skill", false, temp.path(), "codex").unwrap();
-    assert!(!path.exists());
-
-    fs::create_dir_all(&path).unwrap();
-    fs::write(path.join("SKILL.md"), "mine").unwrap();
-    assert!(skill_state(&path, "skill").unwrap().conflict.is_some());
-    assert!(set_skill(&path, "skill", false, temp.path(), "codex").is_err());
-
-    let empty = temp.path().join("skills/empty/aidget");
-    fs::create_dir_all(&empty).unwrap();
-    assert!(skill_state(&empty, "skill").unwrap().conflict.is_none());
-}
-
-#[cfg(unix)]
-#[test]
-fn matching_symlinked_skill_counts_as_installed_and_is_unlinked() {
-    let temp = tempdir().unwrap();
-    let source = temp.path().join("source");
-    fs::create_dir_all(&source).unwrap();
-    fs::write(source.join("SKILL.md"), "skill").unwrap();
-    let path = temp.path().join("skills/aidget");
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::os::unix::fs::symlink(&source, &path).unwrap();
-
-    assert!(skill_state(&path, "skill").unwrap().installed);
-    set_skill(&path, "skill", false, temp.path(), "codex").unwrap();
-    assert!(!path.exists());
-    assert!(source.join("SKILL.md").exists());
 }
 
 #[test]

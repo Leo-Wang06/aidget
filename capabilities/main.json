@@ -10,6 +10,7 @@
     "allow-integration-state",
     "allow-set-agent-integration",
     "allow-set-preferences",
+    "allow-set-github-token",
     "allow-set-widget-enabled",
     "allow-delete-widget",
     "allow-restore-widget",

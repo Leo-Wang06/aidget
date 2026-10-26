@@ -62,6 +62,7 @@ function state(lastPage: MainState['lastPage']): MainState {
     language: 'system',
     trayClickAction: 'window',
     lastPage,
+    githubToken: null,
   };
 }
 
@@ -134,6 +135,110 @@ beforeEach(() => {
 });
 
 describe('main window navigation', () => {
+  it('saves a GitHub token once and only renders its prefix and suffix', async () => {
+    const initial = state('general');
+    let saved: string | null | undefined;
+    mocks.invoke.mockImplementation((command: string, args?: { token?: string | null }) => {
+      if (command === 'main_state') {
+        return Promise.resolve(initial);
+      }
+      if (command === 'main_painted') {
+        return Promise.resolve(true);
+      }
+      if (command === 'set_github_token') {
+        saved = args?.token;
+        return Promise.resolve({ masked: 'ghp_…WXYZ' });
+      }
+      return Promise.resolve();
+    });
+    await import('../../src/main');
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-github-token-form]')).toBeTruthy();
+    });
+
+    const form = document.querySelector<HTMLFormElement>('[data-github-token-form]')!;
+    const input = form.querySelector<HTMLInputElement>('input')!;
+    input.value = 'samplevalueABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-github-token-masked]')?.textContent).toBe('ghp_…WXYZ');
+    });
+    expect(saved).toBe('samplevalueABCDEFGHIJKLMNOPQRSTUVWXYZ');
+    expect(form.hidden).toBe(true);
+    expect(input.value).toBe('');
+    expect(document.body.textContent).not.toContain('samplevalueABCDEFGHIJKLMNOPQRSTUVWXYZ');
+  });
+
+  it('keeps a failed GitHub token input available for correction', async () => {
+    const initial = state('general');
+    mocks.invoke.mockImplementation((command: string) => {
+      if (command === 'main_state') {
+        return Promise.resolve(initial);
+      }
+      if (command === 'main_painted') {
+        return Promise.resolve(true);
+      }
+      if (command === 'set_github_token') {
+        return Promise.reject(new Error('GET https://api.github.com/repos: HTTP 401 Unauthorized'));
+      }
+      return Promise.resolve();
+    });
+    await import('../../src/main');
+    const form = await vi.waitFor(() => {
+      const value = document.querySelector<HTMLFormElement>('[data-github-token-form]');
+      expect(value).toBeTruthy();
+      return value!;
+    });
+    const input = form.querySelector<HTMLInputElement>('input')!;
+    input.value = 'ghp_invalid1234567890abcdefghijkl';
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-github-token-error]')?.textContent).toContain(
+        'HTTP 401',
+      );
+    });
+    expect(form.hidden).toBe(false);
+    expect(input.value).toBe('ghp_invalid1234567890abcdefghijkl');
+  });
+
+  it('requires removal before a configured GitHub token can be replaced', async () => {
+    const initial = state('general');
+    initial.githubToken = { masked: 'ghp_…WXYZ' };
+    let removed: string | null | undefined;
+    mocks.invoke.mockImplementation((command: string, args?: { token?: string | null }) => {
+      if (command === 'main_state') {
+        return Promise.resolve(initial);
+      }
+      if (command === 'main_painted') {
+        return Promise.resolve(true);
+      }
+      if (command === 'set_github_token') {
+        removed = args?.token;
+        return Promise.resolve(null);
+      }
+      return Promise.resolve();
+    });
+    await import('../../src/main');
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-github-token-masked]')?.textContent).toBe('ghp_…WXYZ');
+    });
+    expect(document.querySelector<HTMLFormElement>('[data-github-token-form]')!.hidden).toBe(true);
+
+    document.querySelector<HTMLButtonElement>('[data-github-token-remove]')!.click();
+
+    await vi.waitFor(() => {
+      expect(document.querySelector<HTMLFormElement>('[data-github-token-form]')!.hidden).toBe(
+        false,
+      );
+    });
+    expect(removed).toBeNull();
+    expect(document.activeElement).toBe(
+      document.querySelector<HTMLInputElement>('[data-github-token-input]'),
+    );
+  });
+
   it('clears broken-widget errors after the configuration is repaired', async () => {
     const initial = state('about');
     initial.broken = [{ id: 'clock', error: 'invalid config' }];
