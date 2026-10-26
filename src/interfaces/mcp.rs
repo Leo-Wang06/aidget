@@ -27,6 +27,7 @@ Workflow: aidget_list -> aidget_get -> aidget_guide when creating or changing la
 aidget_list omits agents.md. Follow its region, layout and refresh rules; infer them from markup only when the file is missing or silent.
 aidget_guide is the complete authoring contract for regions, surfaces, scripts, permissions, readiness and platform limits. Read it instead of guessing.";
 
+/// MCP server forwarding widget tools to the resident UI's local bridge.
 #[derive(Clone)]
 pub struct AidgetMcp {
     client: Arc<Client>,
@@ -128,6 +129,7 @@ pub struct ScreenshotArgs {
 
 #[tool_router]
 impl AidgetMcp {
+    /// Create an MCP server using this store's isolated bridge endpoint.
     pub fn new(store: Store) -> Self {
         let socket = store.socket_path();
         AidgetMcp {
@@ -138,10 +140,20 @@ impl AidgetMcp {
     }
 
     async fn call(&self, method: &str, params: Value) -> std::result::Result<Value, McpError> {
-        if !self.client.is_running() {
-            self.ensure_ui();
-        }
-        self.client.call(method, params).map_err(mcp_error)
+        let server = self.clone();
+        let method = method.to_owned();
+        // Readiness checks and requests both use synchronous IPC. Keep the
+        // whole transaction off async workers: Windows IPC owns a Tokio runtime.
+        tokio::task::spawn_blocking(move || {
+            if !server.client.is_running() {
+                server.ensure_ui();
+            }
+            server.client.call(&method, params).map_err(mcp_error)
+        })
+        .await
+        .map_err(|error| {
+            McpError::internal_error(format!("MCP bridge task failed: {error}"), None)
+        })?
     }
 
     /// Run a tool and decode its JSON into a typed result so rmcp can publish
