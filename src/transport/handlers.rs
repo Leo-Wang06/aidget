@@ -17,7 +17,7 @@ struct WidgetRef {
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct CreateWidget {
     id: String,
     #[serde(default)]
@@ -27,17 +27,17 @@ struct CreateWidget {
     #[serde(default)]
     css: String,
     #[serde(default)]
-    allow_scripts: bool,
-    #[serde(default)]
     drag_mode: WidgetDragMode,
     #[serde(default)]
     permissions: Vec<WidgetPermission>,
+    #[serde(default)]
+    network: Vec<String>,
     #[serde(default)]
     agents: Option<String>,
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct UpdateWidget {
     widget: String,
     base_revision: u64,
@@ -48,11 +48,11 @@ struct UpdateWidget {
     #[serde(default)]
     title: Option<String>,
     #[serde(default)]
-    allow_scripts: Option<bool>,
-    #[serde(default)]
     drag_mode: Option<WidgetDragMode>,
     #[serde(default)]
     permissions: Option<Vec<WidgetPermission>>,
+    #[serde(default)]
+    network: Option<Vec<String>>,
     #[serde(default)]
     agents: Option<String>,
 }
@@ -101,6 +101,28 @@ pub async fn dispatch(
     params: Value,
 ) -> Result<Value> {
     match method {
+        "community_list" => {
+            let snapshot = tauri::async_runtime::spawn_blocking(move || {
+                crate::community::service::Community::new()?.list(&store)
+            })
+            .await
+            .map_err(|e| Error::Other(e.to_string()))??;
+            Ok(serde_json::to_value(snapshot)?)
+        }
+        "community_install" => {
+            let spec = params["package"]
+                .as_str()
+                .ok_or_else(|| Error::InvalidParams("missing package".into()))?
+                .to_owned();
+            let cloned = store.clone();
+            let meta = tauri::async_runtime::spawn_blocking(move || {
+                crate::community::service::Community::new()?.install(&cloned, &spec)
+            })
+            .await
+            .map_err(|e| Error::Other(e.to_string()))??;
+            ui::sync_widgets(&app);
+            Ok(serde_json::to_value(store.ack(&meta)?)?)
+        }
         "ping" => Ok(json!({ "pong": true, "version": env!("CARGO_PKG_VERSION") })),
         "list" => list(&app, &store),
         "get" => get(&store, params),
@@ -148,9 +170,9 @@ fn create(app: AppHandle, store: &Store, params: Value) -> Result<Value> {
         WidgetEdit {
             html: Some(&request.html),
             css: Some(&request.css),
-            allow_scripts: Some(request.allow_scripts),
             drag_mode: Some(request.drag_mode),
             permissions: Some(&request.permissions),
+            network: Some(&request.network),
             agents: request.agents.as_deref(),
             ..WidgetEdit::default()
         },
@@ -175,7 +197,7 @@ fn update(app: AppHandle, store: &Store, params: Value) -> Result<Value> {
             html: request.html.as_deref(),
             css: request.css.as_deref(),
             title: request.title.as_deref(),
-            allow_scripts: request.allow_scripts,
+            network: request.network.as_deref(),
             drag_mode: request.drag_mode,
             permissions: request.permissions.as_deref(),
             agents: request.agents.as_deref(),

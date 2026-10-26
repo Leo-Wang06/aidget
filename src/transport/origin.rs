@@ -26,14 +26,6 @@ pub fn main_window_url() -> String {
     format!("{}/main", origin())
 }
 
-/// Whether widget scripts may `fetch()` plain-http endpoints.
-///
-/// On Windows every widget shares `http://aidget.localhost`, so allowing `http:`
-/// would let one widget read another widget's files over the same origin.
-pub fn scripts_may_fetch_http() -> bool {
-    !cfg!(windows)
-}
-
 /// The host names `protocol::handle` accepts for the custom protocol.
 pub fn is_scheme_host(host: &str) -> bool {
     host == "localhost" || host == "aidget" || host == "aidget.localhost"

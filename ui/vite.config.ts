@@ -1,20 +1,21 @@
-import { defineConfig } from "vite";
-import { fileURLToPath } from "node:url";
-import { resolve } from "node:path";
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = fileURLToPath(new URL(".", import.meta.url));
+import { defineConfig } from 'vite-plus';
+
+const root = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
   root,
-  base: "./",
+  base: './',
   build: {
-    outDir: "dist",
+    outDir: 'dist',
     emptyOutDir: true,
-    target: "safari16",
+    target: 'safari16',
     rollupOptions: {
       input: {
-        widget: resolve(root, "widget.html"),
-        main: resolve(root, "main.html"),
+        widget: resolve(root, 'widget.html'),
+        main: resolve(root, 'main.html'),
       },
     },
   },

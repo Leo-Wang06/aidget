@@ -64,8 +64,8 @@ Run the checks that cover your change:
 
 ```bash
 pnpm install --frozen-lockfile
+pnpm check
 pnpm test
-pnpm typecheck
 cargo fmt --check
 AIDGET_CHECK_TARGET=1 cargo check --lib
 cargo test

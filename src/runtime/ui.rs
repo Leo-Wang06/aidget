@@ -32,7 +32,6 @@ pub struct WidgetState {
     pub id: String,
     pub revision: u64,
     pub token: String,
-    pub allow_scripts: bool,
     /// Region that can initiate native window dragging.
     pub drag_mode: WidgetDragMode,
     pub permissions: Vec<WidgetPermission>,
@@ -51,6 +50,8 @@ mod native_surface;
 pub struct WidgetSummary {
     pub id: String,
     pub title: String,
+    /// Current npm identity, used only to reconcile the community install state.
+    pub package_name: Option<String>,
     pub revision: u64,
     pub token: String,
     pub width: f64,
@@ -66,6 +67,7 @@ pub struct WidgetSummary {
 pub struct MainState {
     pub widgets: Vec<WidgetSummary>,
     pub deleted_widgets: Vec<DeletedWidgetSummary>,
+    pub broken: Vec<crate::widgets::model::BrokenWidget>,
     pub version: String,
     pub theme: Theme,
     pub language: Language,
@@ -346,7 +348,6 @@ fn sync_widgets_inner(app: &AppHandle) -> Result<()> {
             id: id.clone(),
             revision: meta.revision,
             token: content_token(&signature),
-            allow_scripts: meta.allow_scripts,
             drag_mode: meta.drag_mode,
             permissions: meta.permissions.clone(),
             host_surface: surface == WidgetSurface::Host
@@ -427,8 +428,9 @@ pub fn main_widgets(store: &Store) -> Result<MainState> {
             .unwrap_or_else(|| WidgetFrame::default_for(index));
         let signature = signature(store, &id, meta.revision);
         widgets.push(WidgetSummary {
-            id: meta.id,
-            title: meta.title,
+            package_name: store.load_package(&id)?.map(|package| package.name),
+            id: meta.id.clone(),
+            title: meta.title.clone(),
             revision: meta.revision,
             token: content_token(&signature),
             width: frame.w,
@@ -440,6 +442,11 @@ pub fn main_widgets(store: &Store) -> Result<MainState> {
     Ok(MainState {
         widgets,
         deleted_widgets: store.deleted_widgets()?,
+        broken: {
+            let mut broken = store.list()?.broken;
+            broken.extend(crate::widgets::migration::trash_errors(store)?);
+            broken
+        },
         version: env!("CARGO_PKG_VERSION").to_string(),
         theme: preferences.theme,
         language: preferences.language,
@@ -945,13 +952,12 @@ pub fn widget_payload(app: &AppHandle, window: &WebviewWindow) -> Option<WidgetS
         id: id.to_string(),
         revision: meta.revision,
         token: content_token(&signature(&store, id, meta.revision)),
-        allow_scripts: meta.allow_scripts,
         drag_mode: meta.drag_mode,
-        permissions: meta.permissions,
+        permissions: meta.permissions.clone(),
         host_surface: surface == WidgetSurface::Host
             || (surface == WidgetSurface::Glass && !cfg!(target_os = "macos")),
         surface,
-        title: meta.title,
+        title: meta.title.clone(),
     })
 }
 
@@ -1000,6 +1006,7 @@ pub fn persist_position(app: &AppHandle, window: &WebviewWindow) -> Result<()> {
         .ok_or_else(|| Error::InvalidParams("not a widget window".to_string()))?
         .to_string();
     let store = Store::new(app.state::<UiState>().root.lock().unwrap().clone());
+    let _lock = store.write_lock()?;
     let mut board = store.load_board()?;
     let Some(current) = board.widgets.get(&id).cloned() else {
         return Ok(());
@@ -1389,6 +1396,9 @@ fn capture_webkitgtk(
                 .snapshot_future(SnapshotRegion::Visible, SnapshotOptions::empty())
                 .await
                 .map_err(|error| Error::Other(format!("webkit snapshot: {error}")))?;
+            // SAFETY: WebKitGTK owns a live cairo_surface_t. Both binding versions
+            // use the same Cairo C ABI; from_raw_none retains an independent reference.
+            let captured = unsafe { cairo::Surface::from_raw_none(captured.to_raw_none().cast()) };
             let captured = cairo::ImageSurface::try_from(captured)
                 .map_err(|_| Error::Other("webkit snapshot is not an image surface".to_string()))?;
             if captured.width() <= 0 || captured.height() <= 0 {

@@ -254,7 +254,22 @@ pub mod protocol {
         let Some(safe) = sanitize(relative) else {
             return not_found();
         };
+        if safe != std::path::Path::new("index.html")
+            && safe != std::path::Path::new("style.css")
+            && !safe.starts_with("assets")
+        {
+            return not_found();
+        }
         let path = widget_dir.join(safe);
+        let Ok(real) = path.canonicalize() else {
+            return not_found();
+        };
+        let Ok(root) = widget_dir.canonicalize() else {
+            return not_found();
+        };
+        if !real.starts_with(root) {
+            return not_found();
+        }
         let Ok(bytes) = std::fs::read(&path) else {
             return not_found();
         };
@@ -265,35 +280,31 @@ pub mod protocol {
         response(
             bytes,
             content_type(name),
-            Some(widget_csp(meta.allow_scripts)),
+            Some(&widget_csp_for(&meta.config, origin::origin())),
             "no-store",
         )
     }
 
-    /// CSP for a widget document.
-    ///
-    /// `*` never matches a custom scheme, so the scheme must be listed: without
-    /// it a script-enabled widget cannot load `style.css`, `assets/` or its own
-    /// modules. `connect-src` omits the scheme so a script cannot read another
-    /// widget's files. Windows serves every widget from one `http://` origin, so
-    /// plain-http fetches are left out there as well.
-    pub fn widget_csp(allow_scripts: bool) -> &'static str {
-        widget_csp_for(allow_scripts, origin::scripts_may_fetch_http())
+    /// Restrict every resource type to this widget and its exact declared origins.
+    pub fn widget_csp(config: &crate::widgets::package::WidgetConfig) -> String {
+        widget_csp_for(config, origin::origin())
     }
 
-    /// Builds widget CSP for either custom-scheme or shared HTTP origins.
-    pub fn widget_csp_for(allow_scripts: bool, scripts_may_fetch_http: bool) -> &'static str {
-        if allow_scripts {
-            if scripts_may_fetch_http {
-                "default-src aidget: data: blob: https: http: 'unsafe-inline' 'unsafe-eval'; \
-                 connect-src https: http: data: blob:"
-            } else {
-                "default-src 'self' data: blob: https: 'unsafe-inline' 'unsafe-eval'; \
-                 connect-src https: data: blob:"
-            }
+    /// Parameterized origin permits testing the Windows and custom-scheme models.
+    pub fn widget_csp_for(config: &crate::widgets::package::WidgetConfig, origin: &str) -> String {
+        let local = format!("{origin}/content/{}/", config.id);
+        let remote = config.network.join(" ");
+        let assets = format!("{local} {remote} data: blob:");
+        let scripts = if config
+            .permissions
+            .contains(&crate::widgets::model::WidgetPermission::Script)
+        {
+            format!("{local} {remote} 'unsafe-inline' 'unsafe-eval'")
         } else {
-            "script-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none';"
-        }
+            "'none'".into()
+        };
+        let connect = if remote.is_empty() { "'none'" } else { &remote };
+        format!("default-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; script-src {scripts}; style-src {assets} 'unsafe-inline'; img-src {assets}; font-src {assets}; media-src {assets}; connect-src {connect}")
     }
 
     fn sanitize(relative: &str) -> Option<PathBuf> {

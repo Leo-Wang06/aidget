@@ -13,7 +13,9 @@ export function createPreviewRefresh(
   let running = false;
 
   async function run() {
-    if (running || !canRefresh()) return;
+    if (running || !canRefresh()) {
+      return;
+    }
     running = true;
     try {
       await refresh();
@@ -23,14 +25,18 @@ export function createPreviewRefresh(
   }
 
   function start() {
-    if (timer !== undefined) return;
+    if (timer !== undefined) {
+      return;
+    }
     timer = setInterval(() => {
       void run();
     }, intervalMs);
   }
 
   function stop() {
-    if (timer === undefined) return;
+    if (timer === undefined) {
+      return;
+    }
     clearInterval(timer);
     timer = undefined;
   }

@@ -1,13 +1,14 @@
-import { createHash } from "node:crypto";
-import { copyFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
-import { pathToFileURL } from "node:url";
-import { parseTag } from "./version.mjs";
+import { createHash } from 'node:crypto';
+import { copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { basename, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+import { parseTag } from './version.mjs';
 
 export function assetName(source, version) {
   const name = basename(source);
 
-  if (name.endsWith(".dmg")) {
+  if (name.endsWith('.dmg')) {
     if (/aarch64|arm64/i.test(name)) {
       return `aidget_${version}_aarch64.dmg`;
     }
@@ -15,16 +16,16 @@ export function assetName(source, version) {
       return `aidget_${version}_x64.dmg`;
     }
   }
-  if (name.endsWith(".exe")) {
+  if (name.endsWith('.exe')) {
     return `aidget_${version}_x64-setup.exe`;
   }
-  if (name.endsWith(".AppImage")) {
+  if (name.endsWith('.AppImage')) {
     return `aidget_${version}_amd64.AppImage`;
   }
-  if (name.endsWith(".deb")) {
+  if (name.endsWith('.deb')) {
     return `aidget_${version}_amd64.deb`;
   }
-  if (name.endsWith(".rpm")) {
+  if (name.endsWith('.rpm')) {
     return `aidget_${version}_amd64.rpm`;
   }
 
@@ -76,10 +77,12 @@ export async function collectAssets({ input, output, version }) {
 
   const sums = [];
   for (const name of expected) {
-    const digest = createHash("sha256").update(await readFile(join(output, name))).digest("hex");
+    const digest = createHash('sha256')
+      .update(await readFile(join(output, name)))
+      .digest('hex');
     sums.push(`${digest}  ${name}`);
   }
-  await writeFile(join(output, "SHA256SUMS"), `${sums.join("\n")}\n`);
+  await writeFile(join(output, 'SHA256SUMS'), `${sums.join('\n')}\n`);
   return expected;
 }
 
@@ -88,11 +91,11 @@ async function main(argv) {
   for (let i = 0; i < argv.length; i += 2) {
     values.set(argv[i], argv[i + 1]);
   }
-  const version = parseTag(values.get("--version"));
-  const input = values.get("--input");
-  const output = values.get("--output");
+  const version = parseTag(values.get('--version'));
+  const input = values.get('--input');
+  const output = values.get('--output');
   if (!input || !output) {
-    throw new Error("usage: assets.mjs --version vX.Y.Z --input DIR --output DIR");
+    throw new Error('usage: assets.mjs --version vX.Y.Z --input DIR --output DIR');
   }
 
   const names = await collectAssets({ input, output, version });

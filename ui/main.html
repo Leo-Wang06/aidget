@@ -28,7 +28,12 @@
         <nav class="navigation" aria-label="Main navigation">
           <div class="nav-group">
             <p class="nav-heading" data-message="integrations"></p>
-            <button class="nav-item is-active" type="button" data-page="integrations" aria-current="page">
+            <button
+              class="nav-item is-active"
+              type="button"
+              data-page="integrations"
+              aria-current="page"
+            >
               <span class="nav-icon" aria-hidden="true"><i data-lucide="server-cog"></i></span>
               <span data-message="mcpAndSkills"></span>
             </button>
@@ -67,14 +72,38 @@
           </div>
         </header>
 
-        <section class="page-content" data-view="local-widgets" aria-labelledby="local-widgets-title" hidden>
-          <h1 class="visually-hidden" id="local-widgets-title" data-message="localWidgetsTitle"></h1>
+        <section
+          class="page-content"
+          data-view="local-widgets"
+          aria-labelledby="local-widgets-title"
+          hidden
+        >
+          <h1
+            class="visually-hidden"
+            id="local-widgets-title"
+            data-message="localWidgetsTitle"
+          ></h1>
           <div class="widget-filters" role="group" data-filter-options>
             <div class="segmented-control" data-widget-filter-control>
               <span class="segmented-control-indicator" aria-hidden="true"></span>
-              <button class="segment-button" type="button" data-value="all" data-message="filterAll"></button>
-              <button class="segment-button" type="button" data-value="enabled" data-message="filterEnabled"></button>
-              <button class="segment-button" type="button" data-value="disabled" data-message="filterDisabled"></button>
+              <button
+                class="segment-button"
+                type="button"
+                data-value="all"
+                data-message="filterAll"
+              ></button>
+              <button
+                class="segment-button"
+                type="button"
+                data-value="enabled"
+                data-message="filterEnabled"
+              ></button>
+              <button
+                class="segment-button"
+                type="button"
+                data-value="disabled"
+                data-message="filterDisabled"
+              ></button>
             </div>
             <div class="widget-filter-actions">
               <button class="sort-filter" type="button" data-widget-sort>
@@ -116,7 +145,11 @@
         >
           <div class="page-intro">
             <h1 id="integrations-title" data-message="mcpAndSkillsTitle"></h1>
-            <p class="page-description" data-page-description data-message="mcpAndSkillsDescription"></p>
+            <p
+              class="page-description"
+              data-page-description
+              data-message="mcpAndSkillsDescription"
+            ></p>
           </div>
           <section class="integration-card" aria-labelledby="mcp-step-title">
             <div class="integration-card-heading">
@@ -147,7 +180,12 @@
           <p class="integration-status" hidden role="status"></p>
         </section>
 
-        <section class="page-content settings-page" data-view="general" aria-labelledby="general-title" hidden>
+        <section
+          class="page-content settings-page"
+          data-view="general"
+          aria-labelledby="general-title"
+          hidden
+        >
           <h1 class="visually-hidden" id="general-title" data-message="generalTitle"></h1>
           <div class="settings-groups">
             <section class="settings-group" aria-labelledby="appearance-title">
@@ -162,9 +200,24 @@
                     data-theme-options
                   >
                     <span class="segmented-control-indicator" aria-hidden="true"></span>
-                    <button class="segment-button" type="button" data-value="system" data-message="system"></button>
-                    <button class="segment-button" type="button" data-value="light" data-message="light"></button>
-                    <button class="segment-button" type="button" data-value="dark" data-message="dark"></button>
+                    <button
+                      class="segment-button"
+                      type="button"
+                      data-value="system"
+                      data-message="system"
+                    ></button>
+                    <button
+                      class="segment-button"
+                      type="button"
+                      data-value="light"
+                      data-message="light"
+                    ></button>
+                    <button
+                      class="segment-button"
+                      type="button"
+                      data-value="dark"
+                      data-message="dark"
+                    ></button>
                   </div>
                 </div>
                 <label class="settings-row">
@@ -183,7 +236,12 @@
                 <div class="settings-row">
                   <div class="setting-copy">
                     <span class="setting-label" data-message="trayClickAction"></span>
-                    <span class="setting-note" data-tray-linux-note data-message="trayLinuxUnsupported" hidden></span>
+                    <span
+                      class="setting-note"
+                      data-tray-linux-note
+                      data-message="trayLinuxUnsupported"
+                      hidden
+                    ></span>
                   </div>
                   <div
                     class="segmented-control settings-segmented"
@@ -192,13 +250,29 @@
                     data-tray-click-options
                   >
                     <span class="segmented-control-indicator" aria-hidden="true"></span>
-                    <button class="segment-button" type="button" data-value="menu" data-message="trayMenu"></button>
-                    <button class="segment-button" type="button" data-value="window" data-message="trayWindow"></button>
+                    <button
+                      class="segment-button"
+                      type="button"
+                      data-value="menu"
+                      data-message="trayMenu"
+                    ></button>
+                    <button
+                      class="segment-button"
+                      type="button"
+                      data-value="window"
+                      data-message="trayWindow"
+                    ></button>
                   </div>
                 </div>
                 <div class="settings-row">
                   <span class="setting-label" data-message="launchAtLogin"></span>
-                  <button class="switch" type="button" role="switch" aria-checked="false" data-autostart>
+                  <button
+                    class="switch"
+                    type="button"
+                    role="switch"
+                    aria-checked="false"
+                    data-autostart
+                  >
                     <span></span>
                   </button>
                 </div>
@@ -207,7 +281,12 @@
           </div>
         </section>
 
-        <section class="page-content settings-page" data-view="about" aria-labelledby="about-title" hidden>
+        <section
+          class="page-content settings-page"
+          data-view="about"
+          aria-labelledby="about-title"
+          hidden
+        >
           <h1 class="visually-hidden" id="about-title" data-message="aboutTitle"></h1>
           <div class="settings-list">
             <div class="settings-row">

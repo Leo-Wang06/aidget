@@ -23,3 +23,12 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     fs::rename(&tmp, path)?;
     Ok(())
 }
+
+/// SHA-256 in the lowercase hexadecimal format used by widget registries.
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    sha2::Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}

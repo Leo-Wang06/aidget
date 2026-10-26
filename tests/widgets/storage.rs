@@ -9,14 +9,18 @@ fn root() -> TempDir {
 }
 
 fn widget(store: &Store, allow_scripts: bool, permissions: &[WidgetPermission]) {
+    let mut permissions = permissions.to_vec();
+    if allow_scripts {
+        permissions.push(WidgetPermission::Script);
+    }
     store
         .create(
             "note",
             "Note",
             WidgetEdit {
                 html: Some("<p>note</p>"),
-                allow_scripts: Some(allow_scripts),
-                permissions: Some(permissions),
+
+                permissions: Some(&permissions),
                 ..WidgetEdit::default()
             },
         )

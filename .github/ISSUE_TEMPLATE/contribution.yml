@@ -1,6 +1,6 @@
 name: Contribution Proposal
 description: Propose a change before opening a pull request
-title: "[Contribution]: "
+title: '[Contribution]: '
 labels: []
 body:
   - type: markdown

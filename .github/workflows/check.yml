@@ -75,5 +75,6 @@ jobs:
 
       - name: UI and release-script tests
         run: |
+          pnpm exec vp check
           pnpm test
-          pnpm typecheck
+          pnpm typegen --check

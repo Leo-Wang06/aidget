@@ -21,7 +21,7 @@ fn authorize_reads_the_widget_config() {
             WidgetEdit {
                 html: Some("<p></p>"),
                 css: Some(""),
-                allow_scripts: Some(true),
+                permissions: Some(&[aidget::widgets::model::WidgetPermission::Script]),
                 ..WidgetEdit::default()
             },
         )

@@ -1,4 +1,10 @@
 {
-  "files": [],
-  "references": [{ "path": "./ui" }]
+  "extends": "./ui/tsconfig.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "types": ["node", "vite-plus/client"]
+  },
+  "include": ["vite.config.ts", "ui", "scripts"],
+  "exclude": ["ui/dist"]
 }

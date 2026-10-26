@@ -1,23 +1,30 @@
+import type { WidgetConfig } from '../types/rust';
+
 export interface WidgetState {
   id: string;
   revision: number;
   token: string;
-  allowScripts: boolean;
   /** Native drag region configured in config.json. */
-  dragMode: "all" | "handle";
-  permissions: string[];
+  dragMode: WidgetConfig['dragMode'];
+  permissions: WidgetConfig['permissions'];
   hostSurface: boolean;
-  surface?: "host" | "none" | "glass";
+  surface?: 'host' | 'none' | 'glass';
   title: string;
 }
 
-export function sandboxTokens(allowScripts: boolean, dragMode: WidgetState["dragMode"] = "all"): string[] {
+export function sandboxTokens(
+  scriptEnabled: boolean,
+  dragMode: WidgetState['dragMode'] = 'all',
+): string[] {
   // Static documents run the host's injected listener; response CSP blocks their own scripts.
-  return allowScripts || dragMode === "all" ? ["allow-scripts"] : [];
+  return scriptEnabled || dragMode === 'all' ? ['allow-scripts'] : [];
 }
 
-export function sandboxAttribute(allowScripts: boolean, dragMode: WidgetState["dragMode"] = "all"): string {
-  return sandboxTokens(allowScripts, dragMode).join(" ");
+export function sandboxAttribute(
+  scriptEnabled: boolean,
+  dragMode: WidgetState['dragMode'] = 'all',
+): string {
+  return sandboxTokens(scriptEnabled, dragMode).join(' ');
 }
 
 /**
@@ -39,18 +46,13 @@ export interface PageLocation {
  * the origin; anything else is refused rather than guessed.
  */
 export function contentOrigin(location: PageLocation): string {
-  if (location.hostname === "localhost" || location.hostname === "aidget.localhost") {
+  if (location.hostname === 'localhost' || location.hostname === 'aidget.localhost') {
     return location.origin;
   }
   throw new Error(`not an aidget page: ${location.hostname}`);
 }
 
-export function widgetUrl(
-  origin: string,
-  id: string,
-  revision: number,
-  token: string,
-): string {
+export function widgetUrl(origin: string, id: string, revision: number, token: string): string {
   return `${origin}/content/${encodeURIComponent(id)}/index.html?v=${encodeURIComponent(`${revision}-${token}`)}`;
 }
 
@@ -65,15 +67,15 @@ export function widgetFramePolicy(origin: string, id: string) {
  * to its own label so one widget's state never reaches another window.
  */
 export function widgetEventTarget(label: string): {
-  kind: "AnyLabel";
+  kind: 'AnyLabel';
   label: string;
 } {
-  return { kind: "AnyLabel", label };
+  return { kind: 'AnyLabel', label };
 }
 
 /** Widget windows are labelled `widget-<id>`; the suffix is the authority. */
 export function widgetIdFromLabel(label: string): string | null {
-  return label.startsWith("widget-") ? label.slice("widget-".length) : null;
+  return label.startsWith('widget-') ? label.slice('widget-'.length) : null;
 }
 
 export function isOwnWidget(ownId: string | null, next: WidgetState): boolean {
@@ -86,11 +88,23 @@ export function shouldReload(
   currentUrl: string,
   origin: string,
 ): boolean {
-  if (!previous) return true;
-  if (previous.revision !== next.revision) return true;
-  if (previous.token !== next.token) return true;
-  if (previous.allowScripts !== next.allowScripts) return true;
-  if (previous.dragMode !== next.dragMode) return true;
-  if (previous.permissions.join() !== next.permissions.join()) return true;
+  if (!previous) {
+    return true;
+  }
+  if (previous.revision !== next.revision) {
+    return true;
+  }
+  if (previous.token !== next.token) {
+    return true;
+  }
+  if (previous.permissions.includes('script') !== next.permissions.includes('script')) {
+    return true;
+  }
+  if (previous.dragMode !== next.dragMode) {
+    return true;
+  }
+  if (previous.permissions.join() !== next.permissions.join()) {
+    return true;
+  }
   return currentUrl !== widgetUrl(origin, next.id, next.revision, next.token);
 }

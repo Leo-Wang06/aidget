@@ -11,15 +11,19 @@ unless they show that aidget grants access the attacker did not already have or
 crosses an operating-system privilege boundary.
 
 Widgets are user-controlled content, not trusted extensions. A widget can render
-HTML and CSS, and can run JavaScript only when `allowScripts` is enabled. The
+HTML and CSS, and can run JavaScript only when `permissions` includes `script`. The
 widget iframe is sandboxed without same-origin access; it must not be able to
 read another widget's files, reach Tauri IPC, or control the aidget shell.
+
+The `network` list grants access to exact HTTPS origins. An empty list blocks
+remote network access; paths, wildcards and non-HTTPS origins are rejected.
 
 ## In scope
 
 - Escaping the widget sandbox or reading another widget's files.
 - Reaching Tauri IPC or privileged host APIs from a widget.
 - Bypassing the bridge's origin, host or path checks.
+- Bypassing a widget's declared script or network permissions.
 - Causing aidget to expose Agent configuration, credentials or unrelated local
   files.
 - A malicious import link, Agent integration or bundled resource that gains
@@ -30,7 +34,7 @@ read another widget's files, reach Tauri IPC, or control the aidget shell.
 ## Out of scope
 
 - Malicious widget HTML, CSS or JavaScript that the user chose to install or
-  explicitly enabled with `allowScripts`.
+  explicitly enabled with the `script` permission.
 - Prompt injection in widget content, Agent instructions, repositories, logs or
   model output.
 - Behavior of untrusted Agents, MCP servers, skills, packages or other tools the

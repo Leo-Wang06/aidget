@@ -47,7 +47,6 @@ fn main_window_lists_all_widgets_and_marks_enabled_state() {
             WidgetEdit {
                 html: Some("<p>z</p>"),
                 css: Some(""),
-                allow_scripts: Some(false),
                 ..WidgetEdit::default()
             },
         )
@@ -59,7 +58,7 @@ fn main_window_lists_all_widgets_and_marks_enabled_state() {
             WidgetEdit {
                 html: Some("<p>a</p>"),
                 css: Some(""),
-                allow_scripts: Some(true),
+                permissions: Some(&[aidget::widgets::model::WidgetPermission::Script]),
                 ..WidgetEdit::default()
             },
         )
@@ -71,7 +70,6 @@ fn main_window_lists_all_widgets_and_marks_enabled_state() {
             WidgetEdit {
                 html: Some("<p>h</p>"),
                 css: Some(""),
-                allow_scripts: Some(false),
                 ..WidgetEdit::default()
             },
         )
@@ -138,7 +136,6 @@ fn archiving_a_widget_keeps_its_board_position_for_restore() {
             WidgetEdit {
                 html: Some("<p>sunny</p>"),
                 css: Some(""),
-                allow_scripts: Some(false),
                 ..WidgetEdit::default()
             },
         )
@@ -173,7 +170,6 @@ fn main_window_skips_widgets_with_broken_config() {
             WidgetEdit {
                 html: Some("<p>ok</p>"),
                 css: Some(""),
-                allow_scripts: Some(false),
                 ..WidgetEdit::default()
             },
         )
@@ -185,7 +181,6 @@ fn main_window_skips_widgets_with_broken_config() {
             WidgetEdit {
                 html: Some("<p>bad</p>"),
                 css: Some(""),
-                allow_scripts: Some(false),
                 ..WidgetEdit::default()
             },
         )
@@ -285,6 +280,7 @@ fn revision_receipts_never_move_backwards() {
 fn main_state_exposes_widget_metadata_in_camel_case() {
     let value = serde_json::to_value(MainState {
         widgets: vec![WidgetSummary {
+            package_name: None,
             id: "weather".to_string(),
             title: "Weather".to_string(),
             revision: 2,
@@ -294,6 +290,7 @@ fn main_state_exposes_widget_metadata_in_camel_case() {
             enabled: true,
             created_at: 1_761_158_300_000,
         }],
+        broken: vec![],
         deleted_widgets: vec![DeletedWidgetSummary {
             trash_name: "note-20261022T000000".to_string(),
             id: "note".to_string(),
@@ -354,4 +351,25 @@ fn cached_preview_rejects_unknown_and_invalid_widgets() {
 fn main_only_commands_reject_widget_windows() {
     assert!(require_main_window_label("main").is_ok());
     assert!(require_main_window_label("widget-weather").is_err());
+}
+
+#[test]
+fn main_state_tracks_current_package_identity_without_a_source_badge() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::new(directory.path());
+    store.ensure_layout().unwrap();
+    store.create("note", "Note", WidgetEdit::default()).unwrap();
+    assert_eq!(main_widgets(&store).unwrap().widgets[0].package_name, None);
+    std::fs::write(
+        store.widget_dir("note").unwrap().join("package.json"),
+        br#"{"name":"@someone/note","version":"1.0.0"}"#,
+    )
+    .unwrap();
+    let state = main_widgets(&store).unwrap();
+    assert_eq!(
+        state.widgets[0].package_name.as_deref(),
+        Some("@someone/note")
+    );
+    let value = serde_json::to_value(state).unwrap();
+    assert!(value["widgets"][0].get("source").is_none());
 }

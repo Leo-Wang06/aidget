@@ -1,15 +1,23 @@
 use aidget::widgets::model::WidgetFrame;
 
 #[test]
-fn drag_mode_defaults_to_all_and_rejects_unknown_values() {
+fn script_execution_is_a_permission_not_a_separate_switch() {
+    let value =
+        serde_json::to_value(aidget::widgets::model::WidgetMeta::new("note", "Note")).unwrap();
+    assert!(value.get("allowScripts").is_none());
+    assert_eq!(value["network"], serde_json::json!([]));
+    assert!(value.get("source").is_none());
+}
+
+#[test]
+fn drag_mode_is_explicit_and_rejects_unknown_values() {
     use aidget::widgets::model::WidgetMeta;
     use serde_json::json;
 
-    let mut value = serde_json::to_value(WidgetMeta::new("note", "Note", false)).unwrap();
+    let mut value = serde_json::to_value(WidgetMeta::new("note", "Note")).unwrap();
     assert_eq!(value["dragMode"], "all");
     value.as_object_mut().unwrap().remove("dragMode");
-    let meta: WidgetMeta = serde_json::from_value(value.clone()).unwrap();
-    assert_eq!(serde_json::to_value(meta).unwrap()["dragMode"], "all");
+    assert!(serde_json::from_value::<WidgetMeta>(value.clone()).is_err());
     value["dragMode"] = json!("handle");
     let meta: WidgetMeta = serde_json::from_value(value.clone()).unwrap();
     assert_eq!(serde_json::to_value(meta).unwrap()["dragMode"], "handle");

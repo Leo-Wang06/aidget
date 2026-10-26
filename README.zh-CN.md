@@ -9,12 +9,12 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/aidget-ai/aidget/check.yml?branch=main&label=CI&style=flat-square)](https://github.com/aidget-ai/aidget/actions/workflows/check.yml)
 [![最新版本](https://img.shields.io/github/v/release/aidget-ai/aidget?style=flat-square)](https://github.com/aidget-ai/aidget/releases/latest)
-[![Rust 1.85+](https://img.shields.io/badge/Rust-1.85%2B-b7410e?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Rust 1.92+](https://img.shields.io/badge/Rust-1.92%2B-b7410e?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Tauri 2](https://img.shields.io/badge/Tauri-2-24c8db?style=flat-square&logo=tauri&logoColor=white)](https://tauri.app/)
 [![MCP](https://img.shields.io/badge/MCP-stdio-6b7280?style=flat-square)](https://modelcontextprotocol.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-111111?style=flat-square)](LICENSE)
 
-[快速开始](#快速开始) | [跨平台支持](#跨平台支持) | [开发](#开发) | [数据目录](#数据目录) | [安全模型](#安全模型)<br>
+[快速开始](#快速开始) | [跨平台支持](#跨平台支持) | [开发](#开发) | [数据目录](#数据目录) | [权限管控](#权限管控)<br>
 [English](README.md) | 简体中文
 
 <img src="./screenshot.png" alt="aidget 截图" width="360" />
@@ -36,6 +36,14 @@
 - **股市跟踪**：让 Agent 展示当前关注的股市信息，不错过任何交易时机。
 
 更多创意待你发现！
+
+## 跨平台支持
+
+| 平台 | 窗口 / 桥接 | 能力与说明 |
+| --- | --- | --- |
+| macOS 12+ | WKWebView / Unix socket | 支持截图、CoreLocation 和原生 glass 材质。 |
+| Windows x64 | WebView2 / 命名管道 | 支持截图和 WinRT 定位；脚本发起网络请求时使用 HTTPS。 |
+| Linux x64 | WebKitGTK / Unix socket | 支持截图和 GeoClue；Wayland 下位置由合成器控制。 |
 
 ## 快速开始
 
@@ -69,13 +77,11 @@
 /aidget 创建一个股票走势跟踪卡片，每隔 5 分钟监控当前 Apple 股票详情。
 ```
 
-## 跨平台支持
+## 社区组件
 
-| 平台 | 窗口 / 桥接 | 能力与说明 |
-| --- | --- | --- |
-| macOS 12+ | WKWebView / Unix socket | 支持截图、CoreLocation 和原生 glass 材质。 |
-| Windows x64 | WebView2 / 命名管道 | 支持截图和 WinRT 定位；脚本发起网络请求时使用 HTTPS。 |
-| Linux x64 | WebKitGTK / Unix socket | 支持截图和 GeoClue；Wayland 下位置由合成器控制。 |
+可通过「社区组件」面板安装经过安全审查的社区组件。
+
+社区组件维护在 [aidget-ai/widgets](https://github.com/aidget-ai/widgets)，如想贡献组件请前往该仓库查看。
 
 ## 开发
 
@@ -93,8 +99,8 @@ flowchart LR
 
 ### 环境要求
 
-- Rust 1.85 或更高版本
-- Node.js 20 或更高版本
+- Rust 1.92 或更高版本
+- Node.js 22.18+（22.x）或 24.11+（24.x）
 - pnpm 12
 - Tauri 2 对应平台的构建依赖
 - Linux：`libwebkit2gtk-4.1-dev`、`libayatana-appindicator3-dev` 和 `librsvg2-dev`
@@ -121,8 +127,8 @@ pnpm build:debug       # 生成 debug 应用包
 ### 检查
 
 ```bash
+pnpm check
 pnpm test
-pnpm typecheck
 cargo fmt --check
 AIDGET_CHECK_TARGET=1 cargo check --lib
 cargo test
@@ -154,6 +160,8 @@ aidget template list|install
 aidget screenshot <id> [--scale N] [--out FILE]
 aidget doctor
 aidget guide [--json]
+aidget community list --json
+aidget community install @aidget-community/<id> --json
 ```
 
 ## 数据目录
@@ -167,7 +175,8 @@ aidget guide [--json]
 ├── settings.toml             # 主程序配置
 ├── widgets/
 │   └── <id>/
-│       ├── config.json       # 标题、脚本开关、拖拽模式、权限和 revision
+│       ├── package.json      # 可选 npm 包信息（用于发布到 NPM）
+│       ├── config.json       # 标题、平台/尺寸、权限、网络和 revision
 │       ├── index.html        # 小组件结构
 │       ├── style.css         # 外观、尺寸和布局样式
 │       ├── agents.md         # 面向 Agent 的说明文档
@@ -183,22 +192,39 @@ aidget guide [--json]
 └── trash/                    # 已归档的小组件
 ```
 
-## 安全模型
+## 权限管控
 
-aidget 与用户在同一账户下运行；`~/.aidget`、小组件和 Agent 配置都属于用户信任边界。
+`aidget` 内置一套权限管控模型，可提升运行时的安全性。
 
-小组件是用户可控内容，不是可信扩展，因此再通过脚本权限和系统权限两层限制。
+### 权限列表
 
-### 脚本权限
+在小组件的 `config.json` 中的 `permissions` 字段中配置需要的权限，默认为空（即最小化权限）。
 
-- `allowScripts` 默认关闭。关闭时，CSP 会阻止脚本、内联事件、嵌套网页、对象和 Worker，但 HTML、CSS 和静态资源仍可正常显示。
-- 开启后，小组件运行在没有同源权限的沙箱中，不能读取其他小组件文件、访问 Tauri IPC 或控制 aidget 主界面。
+```
+{
+  "permissions": [
+    "script",
+    "storage",
+    ...
+  ]
+}
+```
 
-### 系统权限
+- `script`：脚本运行权限，未配置时 CSP 会阻止脚本、内联事件、嵌套网页、对象和 Worker，但 HTML、CSS 和静态资源仍可正常显示。启用后，小组件运行在没有同源权限的沙箱中，不能读取其他小组件文件、访问 Tauri IPC 或控制 aidget 主界面。
+- `storage`：为小组件提供本地存储功能，存储空间上限为 256 KB，组件相互隔离。
+- `location`：为小组件提供通过请求操作系统定位服务的能力，适用于需要访问定位信息的场景。
 
-- 小组件必须在 `config.json` 的 `permissions` 中显式申请能力；未声明的调用返回 `permission_denied`。
-- `location` 通过操作系统定位服务请求许可，不使用 IP 定位作为回退。
-- `storage` 按小组件隔离保存字符串，上限为 256 KB，不与其他小组件共享。
+## 网络权限
+
+在小组件的 `config.json` 中的 `network` 字段配置可访问的 HTTPS 域名，默认为空（即禁止访问网络）。
+
+```
+{
+  "network": [
+    "https://example.com"
+  ]
+}
+```
 
 ### 安全声明
 

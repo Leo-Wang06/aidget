@@ -26,7 +26,7 @@ body {
   margin: 0;
   overflow: hidden;
   background: transparent;
-  font-family: "Songti SC", "Noto Serif SC", "Iowan Old Style", serif;
+  font-family: 'Songti SC', 'Noto Serif SC', 'Iowan Old Style', serif;
   color: var(--widget-chrome);
 }
 
@@ -57,7 +57,7 @@ body {
     inset 0 0 0 1px rgb(120 96 66 / 0.1);
 }
 
-.widget-chrome[data-surface="none"] .host-surface {
+.widget-chrome[data-surface='none'] .host-surface {
   display: none;
 }
 

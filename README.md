@@ -9,12 +9,12 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/aidget-ai/aidget/check.yml?branch=main&label=CI&style=flat-square)](https://github.com/aidget-ai/aidget/actions/workflows/check.yml)
 [![Latest release](https://img.shields.io/github/v/release/aidget-ai/aidget?style=flat-square)](https://github.com/aidget-ai/aidget/releases/latest)
-[![Rust 1.85+](https://img.shields.io/badge/Rust-1.85%2B-b7410e?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Rust 1.92+](https://img.shields.io/badge/Rust-1.92%2B-b7410e?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Tauri 2](https://img.shields.io/badge/Tauri-2-24c8db?style=flat-square&logo=tauri&logoColor=white)](https://tauri.app/)
 [![MCP](https://img.shields.io/badge/MCP-stdio-6b7280?style=flat-square)](https://modelcontextprotocol.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-111111?style=flat-square)](LICENSE)
 
-[Quick start](#quick-start) | [Cross-platform support](#cross-platform-support) | [Development](#development) | [Data directory](#data-directory) | [Security model](#security-model)<br>
+[Quick start](#quick-start) | [Cross-platform support](#cross-platform-support) | [Development](#development) | [Data directory](#data-directory) | [Permission controls](#permission-controls)<br>
 English | [简体中文](README.zh-CN.md)
 
 <img src="./screenshot.png" alt="aidget screenshot" width="360" />
@@ -36,6 +36,14 @@ Some typical scenarios:
 - **Stock tracker.** Ask your agent to display the stocks you follow so you never miss a market update.
 
 More ideas are waiting to be discovered!
+
+## Cross-platform support
+
+| Platform | Window / bridge | Capabilities and notes |
+| --- | --- | --- |
+| macOS 12+ | WKWebView / Unix socket | Screenshot, CoreLocation, and native glass material. |
+| Windows x64 | WebView2 / named pipe | Screenshot and WinRT geolocation; use HTTPS for network requests made by scripts. |
+| Linux x64 | WebKitGTK / Unix socket | Screenshot and GeoClue; under Wayland, positioning is controlled by the compositor. |
 
 ## Quick start
 
@@ -69,13 +77,11 @@ Or a scheduled task:
 /aidget Create a stock-tracking widget and check the latest Apple stock details every 5 minutes.
 ```
 
-## Cross-platform support
+## Community widgets
 
-| Platform | Window / bridge | Capabilities and notes |
-| --- | --- | --- |
-| macOS 12+ | WKWebView / Unix socket | Screenshot, CoreLocation, and native glass material. |
-| Windows x64 | WebView2 / named pipe | Screenshot and WinRT geolocation; use HTTPS for network requests made by scripts. |
-| Linux x64 | WebKitGTK / Unix socket | Screenshot and GeoClue; under Wayland, positioning is controlled by the compositor. |
+Install community widgets that have passed security review from the **Community Widgets** panel.
+
+Community widgets are maintained in [aidget-ai/widgets](https://github.com/aidget-ai/widgets). Visit that repository to learn how to contribute.
 
 ## Development
 
@@ -93,8 +99,8 @@ flowchart LR
 
 ### Requirements
 
-- Rust 1.85 or newer
-- Node.js 20 or newer
+- Rust 1.92 or newer
+- Node.js 22.18+ (22.x) or 24.11+ (24.x)
 - pnpm 12
 - Tauri 2 platform prerequisites
 - Linux: `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`, and `librsvg2-dev`
@@ -121,8 +127,8 @@ pnpm build:debug       # debug app bundle
 ### Checks
 
 ```bash
+pnpm check
 pnpm test
-pnpm typecheck
 cargo fmt --check
 AIDGET_CHECK_TARGET=1 cargo check --lib
 cargo test
@@ -154,6 +160,8 @@ aidget template list|install
 aidget screenshot <id> [--scale N] [--out FILE]
 aidget doctor
 aidget guide [--json]
+aidget community list --json
+aidget community install @aidget-community/<id> --json
 ```
 
 ## Data directory
@@ -167,7 +175,8 @@ The default data root is `~/.aidget`.
 ├── settings.toml             # application settings
 ├── widgets/
 │   └── <id>/
-│       ├── config.json       # title, script toggle, drag mode, permissions, and revision
+│       ├── package.json      # optional npm package metadata (for publishing to npm)
+│       ├── config.json       # title, platform/size, permissions, network and revision
 │       ├── index.html        # widget structure
 │       ├── style.css         # appearance, size, and layout styles
 │       ├── agents.md         # guidance for future agents
@@ -183,22 +192,39 @@ The default data root is `~/.aidget`.
 └── trash/                    # archived widgets
 ```
 
-## Security model
+## Permission controls
 
-aidget runs under the same user account as you; `~/.aidget`, widgets, and agent configuration files are all within the user's trust boundary.
+aidget includes a permission model to improve runtime security.
 
-Widgets are user-controlled content, not trusted extensions. aidget therefore applies two layers of restrictions: script permissions and system permissions.
+### Permissions
 
-### Script permissions
+Declare the permissions a widget needs in its `config.json` using `permissions`. The default is an empty list, granting no capabilities.
 
-- `allowScripts` is disabled by default. When disabled, CSP blocks scripts, inline event handlers, nested pages, objects, and workers, while HTML, CSS, and static assets still render normally.
-- When enabled, widgets run in a sandbox without same-origin access. They cannot read another widget's files, access Tauri IPC, or control the aidget main window.
+```
+{
+  "permissions": [
+    "script",
+    "storage",
+    ...
+  ]
+}
+```
 
-### System permissions
+- `script`: allows scripts to run. Without it, CSP blocks scripts, inline event handlers, nested pages, objects, and workers, while HTML, CSS, and static assets still render. When enabled, widgets run in a sandbox without same-origin access. They cannot read other widgets' files, access Tauri IPC, or control the aidget main window.
+- `storage`: provides local storage isolated per widget, with a 256 KB limit.
+- `location`: lets a widget request the operating system's location service when it needs location information.
 
-- A widget must explicitly request capabilities through `permissions` in its `config.json`; undeclared calls return `permission_denied`.
-- `location` requests access through the operating system's location service and does not fall back to IP-based geolocation.
-- `storage` keeps strings isolated per widget, with a 256 KB limit, and never shares them with other widgets.
+## Network permissions
+
+Declare the exact HTTPS origins a widget can access in its `config.json` using `network`. The default empty list blocks network access.
+
+```
+{
+  "network": [
+    "https://example.com"
+  ]
+}
+```
 
 ### Security statement
 

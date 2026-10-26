@@ -62,7 +62,6 @@ fn main() {
 fn run_ui(show_main_window: bool, detach: bool) -> Result<()> {
     let store = Store::open_default();
     store.ensure_layout()?;
-    store.prune_retained()?;
     aidget::runtime::process::publish_cli(store.root());
     let client = aidget::transport::client::Client::new(store.socket_path());
     if client.is_running() {
@@ -97,6 +96,15 @@ fn run_ui(show_main_window: bool, detach: bool) -> Result<()> {
     let listener = endpoint
         .bind()
         .map_err(|error| Error::Other(format!("cannot bind socket: {error}")))?;
+    let migration_errors = aidget::widgets::migration::run(&store)?;
+    for broken in &migration_errors {
+        eprintln!("widget migration {}: {}", broken.id, broken.error);
+    }
+    if migration_errors.is_empty() {
+        store.prune_retained()?;
+    } else {
+        store.prune_screenshots()?;
+    }
     aidget::widgets::template::bootstrap_welcome(&store)?;
     let store_for_ui = store.clone();
     let store_for_protocol = Arc::new(store.clone());
@@ -135,7 +143,11 @@ fn run_ui(show_main_window: bool, detach: bool) -> Result<()> {
             widget_storage_clear,
             integration_state,
             set_agent_integration,
-            set_preferences
+            set_preferences,
+            community_list,
+            community_media,
+            community_install,
+            community_downloads
         ])
         .setup(move |app| {
             #[cfg(target_os = "macos")]
@@ -556,4 +568,75 @@ fn widget_storage_clear(
     let (store, id) = widget_storage_context(&app, &window)?;
     aidget::widgets::storage::clear(&store, &id)
         .map_err(|error| aidget::widgets::storage::StorageFailure::from(&error))
+}
+
+/// Load a pinned official main snapshot on a blocking HTTP worker.
+#[tauri::command]
+async fn community_list(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+) -> std::result::Result<aidget::community::model::CommunitySnapshot, String> {
+    ui::require_main_window_label(window.label()).map_err(|e| e.to_string())?;
+    let root = app.state::<ui::UiState>().root.lock().unwrap().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        aidget::community::service::Community::new()?.list(&Store::new(root))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+/// Download declared screenshot/logo bytes without exposing remote package HTML.
+#[tauri::command]
+async fn community_media(
+    window: tauri::WebviewWindow,
+    commit: String,
+    package: String,
+    path: String,
+) -> std::result::Result<String, String> {
+    ui::require_main_window_label(window.label()).map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        aidget::community::service::Community::new()?.media(&commit, &package, &path)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+/// Install the exact reviewed content whose permissions the main window displayed.
+#[tauri::command]
+async fn community_install(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    commit: String,
+    package: String,
+) -> std::result::Result<(), String> {
+    ui::require_main_window_label(window.label()).map_err(|e| e.to_string())?;
+    let root = app.state::<ui::UiState>().root.lock().unwrap().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        aidget::community::service::Community::new()?.install_reviewed(
+            &Store::new(root),
+            &commit,
+            &package,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    ui::sync_widgets(&app);
+    Ok(())
+}
+/// Counts are optional npm telemetry and never determine installation success.
+#[tauri::command]
+async fn community_downloads(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    packages: Vec<String>,
+) -> std::result::Result<Vec<aidget::community::model::DownloadCount>, String> {
+    ui::require_main_window_label(window.label()).map_err(|e| e.to_string())?;
+    let root = app.state::<ui::UiState>().root.lock().unwrap().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        aidget::community::service::Community::new()?.downloads(&Store::new(root), &packages)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
 }

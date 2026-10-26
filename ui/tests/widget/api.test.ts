@@ -1,11 +1,9 @@
-import { readFileSync } from "node:fs";
-import { runInNewContext } from "node:vm";
-import { describe, expect, it, vi } from "vitest";
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 
-const SOURCE = readFileSync(
-  new URL("../../src/widget/api.js", import.meta.url),
-  "utf8",
-);
+import { describe, expect, it, vi } from 'vite-plus/test';
+
+const SOURCE = readFileSync(new URL('../../src/widget/api.js', import.meta.url), 'utf8');
 
 interface Harness {
   api: {
@@ -25,9 +23,9 @@ interface Harness {
 
 /** Run the injected script the way the host does: before the page's scripts. */
 function install(
-  pathname = "/content/weather/index.html",
-  hostname = "localhost",
-  search = "?v=2-token",
+  pathname = '/content/weather/index.html',
+  hostname = 'localhost',
+  search = '?v=2-token',
 ): Harness {
   const listeners: Array<(event: unknown) => void> = [];
   const posted: Array<Record<string, unknown>> = [];
@@ -36,7 +34,7 @@ function install(
   };
 
   const sandbox: Record<string, unknown> = {
-    location: { pathname, hostname, protocol: "aidget:", search },
+    location: { pathname, hostname, protocol: 'aidget:', search },
     setTimeout,
     clearTimeout,
     Map,
@@ -44,107 +42,106 @@ function install(
   sandbox.window = {
     parent,
     addEventListener: (name: string, handler: (event: unknown) => void) => {
-      if (name === "message") listeners.push(handler);
+      if (name === 'message') {
+        listeners.push(handler);
+      }
     },
   };
 
   runInNewContext(SOURCE, sandbox);
 
   return {
-    api: (sandbox.window as { aidet?: never; aidget?: Harness["api"] }).aidget ?? null,
+    api: (sandbox.window as { aidet?: never; aidget?: Harness['api'] }).aidget ?? null,
     posted,
     send: (data, source: unknown = parent) => {
-      for (const listener of listeners) listener({ source, data });
+      for (const listener of listeners) {
+        listener({ source, data });
+      }
     },
   };
 }
 
-describe("widget api installation", () => {
-  it("stays out of the shell page and the main-window preview", () => {
-    expect(install("/widget").api).toBeNull();
-    expect(install("/main").api).toBeNull();
+describe('widget api installation', () => {
+  it('stays out of the shell page and the main-window preview', () => {
+    expect(install('/widget').api).toBeNull();
+    expect(install('/main').api).toBeNull();
   });
 
-  it("installs inside a widget document", () => {
+  it('installs inside a widget document', () => {
     const harness = install();
     expect(harness.api?.permissions).toEqual([]);
-    expect(typeof harness.api?.ready).toBe("function");
-    expect(typeof harness.api?.requestLocation).toBe("function");
-    expect(typeof harness.api?.storage.getItem).toBe("function");
+    expect(typeof harness.api?.ready).toBe('function');
+    expect(typeof harness.api?.requestLocation).toBe('function');
+    expect(typeof harness.api?.storage.getItem).toBe('function');
   });
 
-  it("installs under the Windows http host of the same protocol", () => {
-    const harness = install("/content/weather/index.html", "aidget.localhost");
-    expect(typeof harness.api?.requestLocation).toBe("function");
+  it('installs under the Windows http host of the same protocol', () => {
+    const harness = install('/content/weather/index.html', 'aidget.localhost');
+    expect(typeof harness.api?.requestLocation).toBe('function');
   });
 
-  it("stays out of a page that is not served by aidget", () => {
-    expect(install("/content/weather/index.html", "example.com").api).toBeNull();
+  it('stays out of a page that is not served by aidget', () => {
+    expect(install('/content/weather/index.html', 'example.com').api).toBeNull();
   });
 });
 
-describe("ready", () => {
-  it("announces the current revision once", () => {
-    const harness = install("/content/weather/index.html", "localhost", "?v=12-token");
+describe('ready', () => {
+  it('announces the current revision once', () => {
+    const harness = install('/content/weather/index.html', 'localhost', '?v=12-token');
 
     harness.api!.ready();
     harness.api!.ready();
 
-    expect(harness.posted).toEqual([
-      { source: "aidget-widget", type: "ready", revision: 12 },
-    ]);
+    expect(harness.posted).toEqual([{ source: 'aidget-widget', type: 'ready', revision: 12 }]);
   });
 });
 
-describe("requestLocation", () => {
-  it("posts a request tagged for the host and resolves with the reply", async () => {
+describe('requestLocation', () => {
+  it('posts a request tagged for the host and resolves with the reply', async () => {
     const harness = install();
     const pending = harness.api!.requestLocation();
 
     expect(harness.posted).toHaveLength(1);
     const [request] = harness.posted;
-    expect(request).toMatchObject({ source: "aidget-widget", method: "location" });
+    expect(request).toMatchObject({ source: 'aidget-widget', method: 'location' });
 
     harness.send({
-      source: "aidget-host",
+      source: 'aidget-host',
       id: request.id,
       ok: true,
-      result: { latitude: 30.64, longitude: 104.04, accuracy: 65, place: "武侯区" },
+      result: { latitude: 30.64, longitude: 104.04, accuracy: 65, place: '武侯区' },
     });
 
     await expect(pending).resolves.toEqual({
       latitude: 30.64,
       longitude: 104.04,
       accuracy: 65,
-      place: "武侯区",
+      place: '武侯区',
     });
   });
 
-  it("rejects with the host error code", async () => {
+  it('rejects with the host error code', async () => {
     const harness = install();
     const pending = harness.api!.requestLocation();
     const [request] = harness.posted;
     harness.send({
-      source: "aidget-host",
+      source: 'aidget-host',
       id: request.id,
       ok: false,
-      error: { code: "denied", message: "the user refused" },
+      error: { code: 'denied', message: 'the user refused' },
     });
 
     await expect(pending).rejects.toMatchObject({
-      code: "denied",
-      message: "the user refused",
+      code: 'denied',
+      message: 'the user refused',
     });
   });
 
-  it("ignores replies that do not come from the host frame", async () => {
+  it('ignores replies that do not come from the host frame', async () => {
     const harness = install();
     const pending = harness.api!.requestLocation();
     const [request] = harness.posted;
-    harness.send(
-      { source: "aidget-host", id: request.id, ok: true, result: { latitude: 0 } },
-      {},
-    );
+    harness.send({ source: 'aidget-host', id: request.id, ok: true, result: { latitude: 0 } }, {});
 
     let settled = false;
     void pending.then(
@@ -155,56 +152,56 @@ describe("requestLocation", () => {
     expect(settled).toBe(false);
   });
 
-  it("times out when the host never answers", async () => {
+  it('times out when the host never answers', async () => {
     vi.useFakeTimers();
     try {
       const harness = install();
       const pending = harness.api!.requestLocation();
       vi.advanceTimersByTime(25_000);
-      await expect(pending).rejects.toMatchObject({ code: "timeout" });
+      await expect(pending).rejects.toMatchObject({ code: 'timeout' });
     } finally {
       vi.useRealTimers();
     }
   });
 });
 
-describe("permissions", () => {
-  it("mirrors the declaration the shell pushes", () => {
+describe('permissions', () => {
+  it('mirrors the declaration the shell pushes', () => {
     const harness = install();
-    harness.send({ source: "aidget-host", type: "permissions", permissions: ["location"] });
-    expect(harness.api?.permissions).toEqual(["location"]);
+    harness.send({ source: 'aidget-host', type: 'permissions', permissions: ['location'] });
+    expect(harness.api?.permissions).toEqual(['location']);
 
-    harness.send({ source: "aidget-host", type: "permissions" });
+    harness.send({ source: 'aidget-host', type: 'permissions' });
     expect(harness.api?.permissions).toEqual([]);
   });
 });
 
-describe("storage", () => {
-  it("posts storage calls with their parameters", async () => {
+describe('storage', () => {
+  it('posts storage calls with their parameters', async () => {
     const harness = install();
 
-    const get = harness.api!.storage.getItem("todos");
+    const get = harness.api!.storage.getItem('todos');
     expect(harness.posted[0]).toMatchObject({
-      source: "aidget-widget",
-      method: "storage_get",
-      params: { key: "todos" },
+      source: 'aidget-widget',
+      method: 'storage_get',
+      params: { key: 'todos' },
     });
     harness.send({
-      source: "aidget-host",
+      source: 'aidget-host',
       id: harness.posted[0].id,
       ok: true,
       result: '{"first":true}',
     });
     await expect(get).resolves.toBe('{"first":true}');
 
-    const set = harness.api!.storage.setItem("todos", "{}");
+    const set = harness.api!.storage.setItem('todos', '{}');
     expect(harness.posted[1]).toMatchObject({
-      source: "aidget-widget",
-      method: "storage_set",
-      params: { key: "todos", value: "{}" },
+      source: 'aidget-widget',
+      method: 'storage_set',
+      params: { key: 'todos', value: '{}' },
     });
     harness.send({
-      source: "aidget-host",
+      source: 'aidget-host',
       id: harness.posted[1].id,
       ok: true,
       result: null,
@@ -212,35 +209,35 @@ describe("storage", () => {
     await expect(set).resolves.toBeNull();
   });
 
-  it("supports remove, clear, and host failures", async () => {
+  it('supports remove, clear, and host failures', async () => {
     const harness = install();
 
-    const remove = harness.api!.storage.removeItem("todos");
+    const remove = harness.api!.storage.removeItem('todos');
     const clear = harness.api!.storage.clear();
     expect(harness.posted[0]).toMatchObject({
-      method: "storage_remove",
-      params: { key: "todos" },
+      method: 'storage_remove',
+      params: { key: 'todos' },
     });
     expect(harness.posted[1]).toMatchObject({
-      method: "storage_clear",
+      method: 'storage_clear',
       params: undefined,
     });
     harness.send({
-      source: "aidget-host",
+      source: 'aidget-host',
       id: harness.posted[0].id,
       ok: false,
-      error: { code: "permission_denied", message: "storage not declared" },
+      error: { code: 'permission_denied', message: 'storage not declared' },
     });
     harness.send({
-      source: "aidget-host",
+      source: 'aidget-host',
       id: harness.posted[1].id,
       ok: true,
       result: null,
     });
 
     await expect(remove).rejects.toMatchObject({
-      code: "permission_denied",
-      message: "storage not declared",
+      code: 'permission_denied',
+      message: 'storage not declared',
     });
     await expect(clear).resolves.toBeNull();
   });

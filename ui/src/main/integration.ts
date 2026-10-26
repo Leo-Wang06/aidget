@@ -31,15 +31,15 @@ export interface IntegrationMutation {
   problems: AgentProblem[];
 }
 
-export type IntegrationResource = "mcp" | "skills";
+export type IntegrationResource = 'mcp' | 'skills';
 
 /**
  * Render the complete MCP launch command with whitespace-bearing parts quoted.
  */
-export function mcpCommandLine(info: Pick<IntegrationInfo, "mcpCommand" | "mcpArgs">) {
+export function mcpCommandLine(info: Pick<IntegrationInfo, 'mcpCommand' | 'mcpArgs'>) {
   return [info.mcpCommand, ...info.mcpArgs]
     .map((part) => (/[\s"']/u.test(part) ? JSON.stringify(part) : part))
-    .join(" ");
+    .join(' ');
 }
 
 /** Agents that can receive one resource, as the page's icon row shows them. */
@@ -51,12 +51,7 @@ export function integrationAgents(
 }
 
 /** Whether every Agent shown on that row has the resource installed. */
-export function allInstalled(
-  info: IntegrationInfo,
-  resource: IntegrationResource,
-): boolean {
-  const agents = integrationAgents(info, resource).filter(
-    (agent) => !agent[resource]?.conflict,
-  );
+export function allInstalled(info: IntegrationInfo, resource: IntegrationResource): boolean {
+  const agents = integrationAgents(info, resource).filter((agent) => !agent[resource]?.conflict);
   return agents.length > 0 && agents.every((agent) => agent[resource]?.installed);
 }

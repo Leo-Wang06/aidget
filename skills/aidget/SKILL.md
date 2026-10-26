@@ -88,10 +88,13 @@ conflicts, `current`.
 - On macOS, `<meta name="aidget-surface" content="glass" />` places an AppKit
   material behind the page. Keep the page background transparent. Avoid
   `backdrop-filter`, which can flash while dragging.
-- `allowScripts` defaults to false. When true, widget scripts run in an opaque
+- `permissions: ["script"]` enables JavaScript. Scripts run in an opaque
   sandbox without same-origin access; `style.css` and `assets/` still load.
   For asynchronous initialization, call `window.aidget.ready()` after the
   final DOM update. It is optional and idempotent.
+- Every external resource requires an exact HTTPS origin in `network`, e.g.
+  `["https://api.example.com"]`; an empty list blocks network access.
+  CLI: `--network https://api.example.com`; use `none` to clear the list.
 - `dragMode` defaults to `"all"`: ordinary content drags after 4px while
   controls remain interactive. Use `"handle"` for the top 28px handle. Add
   `data-aidget-no-drag` to selectable text or custom interaction containers.
@@ -121,7 +124,7 @@ conflicts, `current`.
 "$AIDGET" widget show <id> --json
 "$AIDGET" widget create <id> --title "..." \
   --html-file index.html --css-file style.css --agents-file agents.md \
-  --allow-scripts --drag-mode all --permissions storage --json
+  --drag-mode all --permissions script,storage --json
 "$AIDGET" widget update <id> --revision <current> \
   --html-file index.html --css-file style.css --agents-file agents.md --json
 "$AIDGET" widget patch <id> <region> --revision <current> \
@@ -134,6 +137,8 @@ conflicts, `current`.
 "$AIDGET" screenshot <id> --scale 1 --out out.png --json
 "$AIDGET" template list --json
 "$AIDGET" template install <name> --json
+"$AIDGET" community list --json
+"$AIDGET" community install @aidget-community/<id> --json
 ```
 
 Use files rather than inline HTML arguments to avoid shell quoting damage.

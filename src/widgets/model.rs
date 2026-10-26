@@ -25,21 +25,24 @@ pub fn validate_id(id: &str) -> Result<()> {
     Ok(())
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct WidgetSource {
-    pub kind: String,
-    pub id: String,
-    pub version: String,
-}
-
 /// Capabilities a widget may ask the host for. A widget only gets the ones it
 /// declares in `config.json`; anything else is denied before it leaves Rust.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    ts_rs::TS,
 )]
 #[serde(rename_all = "lowercase")]
 pub enum WidgetPermission {
+    Script,
     Location,
     Storage,
 }
@@ -57,44 +60,39 @@ pub enum WidgetSurface {
     Glass,
 }
 
+/// Installed portable config plus host-managed revision information.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WidgetMeta {
-    pub id: String,
-    pub title: String,
-    pub version: String,
-    pub allow_scripts: bool,
-    /// Region from which a user may move the native widget window.
-    #[serde(default)]
-    pub drag_mode: WidgetDragMode,
-    /// Omitted in existing widgets, which means "no permissions".
-    #[serde(default)]
-    pub permissions: Vec<WidgetPermission>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub source: Option<WidgetSource>,
+    #[serde(flatten)]
+    pub config: super::package::WidgetConfig,
     pub revision: u64,
     pub updated_at: String,
 }
-
+impl std::ops::Deref for WidgetMeta {
+    type Target = super::package::WidgetConfig;
+    fn deref(&self) -> &Self::Target {
+        &self.config
+    }
+}
+impl std::ops::DerefMut for WidgetMeta {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.config
+    }
+}
 impl WidgetMeta {
-    pub fn new(id: &str, title: &str, allow_scripts: bool) -> Self {
-        WidgetMeta {
-            id: id.to_string(),
-            title: title.to_string(),
-            version: "0.1.0".to_string(),
-            allow_scripts,
-            drag_mode: WidgetDragMode::default(),
-            permissions: Vec::new(),
-            source: None,
+    /// Construct host state for a new local widget.
+    pub fn new(id: &str, title: &str) -> Self {
+        Self {
+            config: super::package::WidgetConfig::new(id, title),
             revision: 1,
             updated_at: chrono::Local::now().to_rfc3339(),
         }
     }
-
+    /// Whether the current declaration grants this host capability.
     pub fn grants(&self, permission: WidgetPermission) -> bool {
         self.permissions.contains(&permission)
     }
-
     /// Deduplicate and order declarations so config files stay canonical.
     pub fn set_permissions(&mut self, permissions: &[WidgetPermission]) {
         let mut next = permissions.to_vec();
@@ -106,7 +104,17 @@ impl WidgetMeta {
 
 /// Widget window drag policy; controls remain interactive in either mode.
 #[derive(
-    Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, clap::ValueEnum,
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    clap::ValueEnum,
+    ts_rs::TS,
 )]
 #[serde(rename_all = "lowercase")]
 pub enum WidgetDragMode {
@@ -188,10 +196,10 @@ pub struct WidgetSummary {
     pub id: String,
     pub title: String,
     pub revision: u64,
-    pub allow_scripts: bool,
     /// Configured region for initiating native window movement.
     pub drag_mode: WidgetDragMode,
     pub permissions: Vec<WidgetPermission>,
+    pub network: Vec<String>,
     pub frame: Option<WidgetFrame>,
 }
 
@@ -208,7 +216,7 @@ pub struct DeletedWidgetSummary {
     pub created_at: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct BrokenWidget {
     pub id: String,
@@ -233,10 +241,10 @@ pub struct WidgetAck {
     pub widget: String,
     pub revision: u64,
     pub title: String,
-    pub allow_scripts: bool,
     /// Effective window drag policy after this write.
     pub drag_mode: WidgetDragMode,
     pub permissions: Vec<WidgetPermission>,
+    pub network: Vec<String>,
     pub updated_at: String,
     /// Present only when this call placed the window (`create`/`move`).
     /// Content edits omit it: the user can drag widgets at any time, so a
@@ -284,6 +292,7 @@ pub struct DoctorReport {
 #[serde(rename_all = "camelCase")]
 pub struct WidgetDocument {
     pub meta: WidgetMeta,
+    pub package: Option<super::package::PackageManifest>,
     pub html: String,
     pub css: String,
     pub agents: Option<String>,

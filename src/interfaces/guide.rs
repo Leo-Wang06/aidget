@@ -23,18 +23,22 @@ pub fn payload() -> Value {
         "configJson": {
             "id": "lowercase a-z0-9 and dashes, 1-64 chars",
             "title": "string",
-            "version": "string",
-            "allowScripts": false,
             "dragMode": "all",
-            "permissions": ["location", "storage"],
+            "permissions": [],
+            "network": [],
+            "logo": null,
+            "screenshots": [],
+            "platforms": ["macos", "windows", "linux"],
+            "size": {"width": 360, "height": 220},
             "revision": 1,
             "updatedAt": "RFC3339"
         },
         "regions": "Wrap replaceable areas with data-aidget-region=\"name\"; names must be unique per widget.",
         "visuals": "The window is a transparent host. The widget page paints a static fallback surface unless it declares <meta name=\"aidget-surface\" content=\"none\">. On macOS, content=\"glass\" places an AppKit visual effect behind the widget; keep the page background transparent. Avoid CSS backdrop-filter because desktop blur can flash transparent while dragging.",
-        "scripts": "Widgets use an opaque sandbox without allow-same-origin. In all-drag mode the host bridge needs allow-scripts even for static widgets; allowScripts=false uses CSP to block widget scripts, inline handlers, nested frames, objects and workers. allowScripts=true enables widget scripts; style.css and assets/ still load, and fetch() to https endpoints is allowed. For asynchronous initialization, call window.aidget.ready() after the final DOM update; screenshots wait up to 500ms for the current revision. On Windows the page is served from http://aidget.localhost, so plain http: fetches are denied there to keep one widget from reading another's files. Never inline the whole stylesheet as a workaround.",
+        "scripts": "permissions containing script enables widget JavaScript in an opaque iframe without same-origin access. With no script grant, CSP blocks scripts and inline handlers. Nested frames, objects and workers are blocked. style.css and assets/ remain local. Every external resource, including images, styles, fonts and fetch, requires an exact HTTPS origin in network. HTTP and wildcard domains are refused. Call window.aidget.ready() after async initialization for screenshot settling.",
+        "packages": "package.json is optional for local widgets and contains npm name/version/description/author/repository. A malformed package file is an error. No source field is stored. Community packages use @aidget-community/<id>. Local cards never display provenance badges. config.json owns portable aidget metadata; revision and updatedAt exist only on installed copies.",
         "dragging": "dragMode defaults to all: ordinary text and background move the native window after 4px of mouse movement. Controls remain interactive. Mark selectable text or custom interactions with data-aidget-no-drag, including their descendants. Use handle for the top 28px drag region. CLI create/update accepts --drag-mode all|handle; omitted updates preserve the current mode.",
-        "permissions": "config.json permissions lists host capabilities the widget may use; supported values are \"location\" and \"storage\", and an omitted field means none. A declared capability reaches the widget as window.aidget. await window.aidget.requestLocation() resolves to {latitude, longitude, accuracy, place} after the operating system's location prompt. Storage is per widget: await window.aidget.storage.getItem(key), setItem(key, value), removeItem(key), and clear(); keys and values are strings, and the serialized namespace is capped at 256 KB. Missing declarations return permission_denied. Location errors also use denied, unavailable, or timeout (20s without a fix). aidget never falls back to IP geolocation.",
+        "permissions": "config.json permissions lists host capabilities the widget may use; supported values are \"script\", \"location\" and \"storage\"; every config has an explicit declaration. A declared capability reaches the widget as window.aidget. await window.aidget.requestLocation() resolves to {latitude, longitude, accuracy, place} after the operating system's location prompt. Storage is per widget: await window.aidget.storage.getItem(key), setItem(key, value), removeItem(key), and clear(); keys and values are strings, and the serialized namespace is capped at 256 KB. Missing declarations return permission_denied. Location errors also use denied, unavailable, or timeout (20s without a fix). aidget never falls back to IP geolocation.",
         "agents": "agents.md is never rendered and aidget_list does not return it. Read the agents field from aidget_get before editing, and follow it: it records which data-aidget-region holds which value, layout constraints, and refresh rules. Keep it current with aidget_update agents.",
         "time": "aidget does not recompute widget data. Use a script-enabled widget or let the agent update content; the main window recaptures enabled previews every 30 seconds while the local-widgets page is visible.",
         "position": "Widget position is user-owned. The user can drag or resize a widget at any time, which bumps boardRevision without any tool call. aidget_update and aidget_patch never change position and return no frame; do not treat a changed frame as a side effect of an edit and do not move a widget back unless the user asks.",
@@ -75,7 +79,7 @@ pub fn print(json_output: bool) -> Result<()> {
         "visuals   host fallback surface by default; meta aidget-surface=none paints all pixels"
     );
     println!(
-        "scripts   allowScripts=false by default; true enables widget scripts, never same-origin"
+        "scripts   permissions=[script] enables JavaScript; network lists exact HTTPS origins"
     );
     println!(
         "ready     window.aidget.ready() after async initialization; screenshots wait up to 500ms"

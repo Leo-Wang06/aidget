@@ -1,6 +1,6 @@
-import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const TAG_PATTERN = /^v((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$/;
 
@@ -8,10 +8,10 @@ function parsePackageVersion(toml) {
   let inPackage = false;
   let version = null;
 
-  for (const line of toml.split("\n")) {
+  for (const line of toml.split('\n')) {
     const trimmed = line.trim();
     if (/^\[[^\]]+\]$/.test(trimmed)) {
-      inPackage = trimmed === "[package]";
+      inPackage = trimmed === '[package]';
       continue;
     }
     if (!inPackage || version !== null || !/^version\s*=/.test(trimmed)) {
@@ -19,26 +19,26 @@ function parsePackageVersion(toml) {
     }
     const match = trimmed.match(/^version\s*=\s*"([^"]+)"/);
     if (!match) {
-      throw new Error("Cargo.toml package version is not a TOML string");
+      throw new Error('Cargo.toml package version is not a TOML string');
     }
     version = match[1];
   }
 
   if (version === null) {
-    throw new Error("Cargo.toml has no version in its [package] section");
+    throw new Error('Cargo.toml has no version in its [package] section');
   }
   return version;
 }
 
 function replacePackageVersion(toml, version) {
-  const lines = toml.split("\n");
+  const lines = toml.split('\n');
   let inPackage = false;
   let replaced = false;
 
   for (let i = 0; i < lines.length; i += 1) {
     const trimmed = lines[i].trim();
     if (/^\[[^\]]+\]$/.test(trimmed)) {
-      inPackage = trimmed === "[package]";
+      inPackage = trimmed === '[package]';
       continue;
     }
     if (inPackage && !replaced && /^version\s*=/.test(trimmed)) {
@@ -48,9 +48,9 @@ function replacePackageVersion(toml, version) {
   }
 
   if (!replaced) {
-    throw new Error("Cargo.toml has no version to replace in its [package] section");
+    throw new Error('Cargo.toml has no version to replace in its [package] section');
   }
-  return lines.join("\n");
+  return lines.join('\n');
 }
 
 export function parseTag(tag) {
@@ -62,8 +62,8 @@ export function parseTag(tag) {
 }
 
 export function isNewerTag(candidate, current) {
-  const next = parseTag(candidate).split(".").map(Number);
-  const latest = parseTag(current).split(".").map(Number);
+  const next = parseTag(candidate).split('.').map(Number);
+  const latest = parseTag(current).split('.').map(Number);
 
   for (let i = 0; i < 3; i += 1) {
     if (next[i] !== latest[i]) {
@@ -74,17 +74,17 @@ export function isNewerTag(candidate, current) {
 }
 
 async function readJson(path, label) {
-  const value = JSON.parse(await readFile(path, "utf8"));
-  if (typeof value.version !== "string") {
+  const value = JSON.parse(await readFile(path, 'utf8'));
+  if (typeof value.version !== 'string') {
     throw new Error(`${label} has no string version`);
   }
   return value;
 }
 
 export async function readVersions(root) {
-  const cargo = await readFile(join(root, "Cargo.toml"), "utf8");
-  const packageJson = await readJson(join(root, "package.json"), "package.json");
-  const tauriConfig = await readJson(join(root, "tauri.conf.json"), "tauri.conf.json");
+  const cargo = await readFile(join(root, 'Cargo.toml'), 'utf8');
+  const packageJson = await readJson(join(root, 'package.json'), 'package.json');
+  const tauriConfig = await readJson(join(root, 'tauri.conf.json'), 'tauri.conf.json');
 
   return {
     cargo: parsePackageVersion(cargo),
@@ -95,13 +95,13 @@ export async function readVersions(root) {
 
 export async function setVersion(root, tag) {
   const version = parseTag(tag);
-  const cargoPath = join(root, "Cargo.toml");
-  const packagePath = join(root, "package.json");
-  const tauriPath = join(root, "tauri.conf.json");
+  const cargoPath = join(root, 'Cargo.toml');
+  const packagePath = join(root, 'package.json');
+  const tauriPath = join(root, 'tauri.conf.json');
 
-  const cargo = await readFile(cargoPath, "utf8");
-  const packageJson = await readJson(packagePath, "package.json");
-  const tauriConfig = await readJson(tauriPath, "tauri.conf.json");
+  const cargo = await readFile(cargoPath, 'utf8');
+  const packageJson = await readJson(packagePath, 'package.json');
+  const tauriConfig = await readJson(tauriPath, 'tauri.conf.json');
 
   await writeFile(cargoPath, replacePackageVersion(cargo, version));
   await writeFile(packagePath, `${JSON.stringify({ ...packageJson, version }, null, 2)}\n`);
@@ -126,22 +126,22 @@ async function main(argv) {
   const root = process.cwd();
 
   switch (command) {
-    case "parse":
+    case 'parse':
       console.log(parseTag(first));
       return;
-    case "set":
+    case 'set':
       console.log(await setVersion(root, first));
       return;
-    case "check":
+    case 'check':
       console.log(await checkVersion(root, first));
       return;
-    case "newer":
+    case 'newer':
       if (!isNewerTag(first, second)) {
         throw new Error(`${first} is not newer than ${second}`);
       }
       return;
     default:
-      throw new Error("usage: version.mjs <parse|set|check|newer> <tag> [previous-tag]");
+      throw new Error('usage: version.mjs <parse|set|check|newer> <tag> [previous-tag]');
   }
 }
 

@@ -129,9 +129,7 @@ fn board_conflict_points_at_a_user_drag_instead_of_a_retry() {
 #[test]
 fn widget_conflict_keeps_the_plain_retry_hint() {
     let error = mcp_error(Error::RevisionConflict {
-        current: Box::new(ConflictCurrent::Widget(WidgetMeta::new(
-            "note", "Note", false,
-        ))),
+        current: Box::new(ConflictCurrent::Widget(WidgetMeta::new("note", "Note"))),
     });
     let hint = error.data.as_ref().unwrap()["hint"].as_str().unwrap();
     assert_eq!(hint, "retry with baseRevision from current.revision");

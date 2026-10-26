@@ -2,8 +2,8 @@
 
 ## Requirements
 
-- Rust 1.85 or newer
-- Node.js 20 or newer; CI uses Node.js 24
+- Rust 1.92 or newer
+- Node.js 22.18+ (22.x) or 24.11+ (24.x); CI uses Node.js 24
 - pnpm 12
 - The platform WebView and packaging dependencies described in the README
 
@@ -25,17 +25,30 @@ repository with Contents write access. The approval workflow uses the
 `AIDGET_BOT_CLIENT_ID` and `AIDGET_BOT_APP_ID` repository variables plus the
 `AIDGET_BOT_PRIVATE_KEY` Actions secret to mint a short-lived installation token.
 
-
 ## Local checks
 
 ```bash
 pnpm install --frozen-lockfile
+pnpm check
 pnpm test
-pnpm typecheck
 cargo fmt --check
 AIDGET_CHECK_TARGET=1 cargo check --lib
 cargo test
 ```
+
+`pnpm check` runs Vite+ formatting, linting and type checks with automatic fixes.
+CI uses `pnpm exec vp check` without fixes. Builds and tests use the Vite and
+Vitest versions bundled with Vite+.
+
+`pnpm typegen` exports frontend types from their owning Rust definitions to
+`ui/src/types/rust.ts`; CI uses `pnpm typegen --check` to detect stale
+output. Do not edit the generated types by hand.
+
+`widgets/registry.json` is the reviewed community content snapshot used by the
+bundled-widget consistency test. The running app fetches its catalog from the
+community repository's main branch. To update a bundled widget, bump its community
+package version, regenerate the community registry, then copy the package and
+registry snapshot here together.
 
 The cross-target library check compiles platform-gated Rust paths without the
 platform bundler. It is not a runtime test. Name any macOS, Windows, Linux,

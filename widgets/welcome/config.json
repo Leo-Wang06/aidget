@@ -1,0 +1,11 @@
+{
+  "id": "welcome",
+  "title": "欢迎使用 AIDGET",
+  "logo": null,
+  "screenshots": ["assets/screenshot.png"],
+  "platforms": ["macos", "windows", "linux"],
+  "size": { "width": 360, "height": 220 },
+  "dragMode": "all",
+  "permissions": [],
+  "network": []
+}

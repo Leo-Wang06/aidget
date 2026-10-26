@@ -79,7 +79,6 @@ fn create_assigns_frame_and_revision() {
             WidgetEdit {
                 html: Some("<p>hi</p>"),
                 css: Some(""),
-                allow_scripts: Some(false),
                 ..WidgetEdit::default()
             },
         )
@@ -94,7 +93,6 @@ fn create_assigns_frame_and_revision() {
         WidgetEdit {
             html: Some(""),
             css: Some(""),
-            allow_scripts: Some(false),
             ..WidgetEdit::default()
         },
     );
@@ -111,7 +109,6 @@ fn content_ack_omits_the_frame_but_keeps_board_revision() {
             WidgetEdit {
                 html: Some("<p>hi</p>"),
                 css: Some(""),
-                allow_scripts: Some(false),
                 ..WidgetEdit::default()
             },
         )
@@ -137,7 +134,6 @@ fn update_conflict_returns_current_meta() {
             WidgetEdit {
                 html: Some("<p>one</p>"),
                 css: Some(""),
-                allow_scripts: Some(false),
                 ..WidgetEdit::default()
             },
         )
@@ -185,7 +181,6 @@ fn update_writes_agents_md_without_touching_html() {
             WidgetEdit {
                 html: Some("<p>hi</p>"),
                 css: Some(""),
-                allow_scripts: Some(false),
                 ..WidgetEdit::default()
             },
         )
@@ -224,7 +219,6 @@ fn patch_region_replaces_once_and_bumps_revision() {
             WidgetEdit {
                 html: Some(html),
                 css: Some(""),
-                allow_scripts: Some(false),
                 ..WidgetEdit::default()
             },
         )
@@ -246,7 +240,6 @@ fn list_reports_board_revision_and_broken_widgets() {
             WidgetEdit {
                 html: Some("<p>hi</p>"),
                 css: Some(""),
-                allow_scripts: Some(false),
                 ..WidgetEdit::default()
             },
         )
@@ -274,7 +267,6 @@ fn rejects_config_and_board_fields_from_older_layouts() {
             WidgetEdit {
                 html: Some("<p>hi</p>"),
                 css: Some(""),
-                allow_scripts: Some(false),
                 ..WidgetEdit::default()
             },
         )
@@ -323,7 +315,6 @@ fn patch_regions_applies_all_edits_or_none() {
             WidgetEdit {
                 html: Some(html),
                 css: Some(""),
-                allow_scripts: Some(false),
                 ..WidgetEdit::default()
             },
         )
@@ -374,7 +365,6 @@ fn delete_moves_widget_to_trash_and_clears_board() {
             WidgetEdit {
                 html: Some("<p>hi</p>"),
                 css: Some(""),
-                allow_scripts: Some(false),
                 ..WidgetEdit::default()
             },
         )
@@ -396,7 +386,6 @@ fn delete_preserves_the_cached_preview_with_the_trashed_widget() {
             WidgetEdit {
                 html: Some("<p>hi</p>"),
                 css: Some(""),
-                allow_scripts: Some(false),
                 ..WidgetEdit::default()
             },
         )
@@ -439,7 +428,6 @@ fn deleted_widget_can_be_restored_with_its_saved_frame() {
             WidgetEdit {
                 html: Some("<p>hi</p>"),
                 css: Some(""),
-                allow_scripts: Some(false),
                 ..WidgetEdit::default()
             },
         )
@@ -519,7 +507,6 @@ fn existing_trash_directory_without_metadata_can_be_restored() {
             WidgetEdit {
                 html: Some("<p>hi</p>"),
                 css: Some(""),
-                allow_scripts: Some(false),
                 ..WidgetEdit::default()
             },
         )
@@ -580,7 +567,6 @@ fn delete_applies_trash_retention_and_returns_a_retained_path() {
             WidgetEdit {
                 html: Some("<p>hi</p>"),
                 css: Some(""),
-                allow_scripts: Some(false),
                 ..WidgetEdit::default()
             },
         )
@@ -613,7 +599,6 @@ fn delete_rejects_invalid_settings_before_moving_the_widget() {
             WidgetEdit {
                 html: Some("<p>hi</p>"),
                 css: Some(""),
-                allow_scripts: Some(false),
                 ..WidgetEdit::default()
             },
         )
@@ -634,7 +619,6 @@ fn permissions_default_to_empty_and_survive_a_round_trip() {
             WidgetEdit {
                 html: Some("<p>hi</p>"),
                 css: Some(""),
-                allow_scripts: Some(false),
                 ..WidgetEdit::default()
             },
         )
@@ -706,7 +690,6 @@ fn unknown_permission_names_are_rejected() {
             WidgetEdit {
                 html: Some("<p>hi</p>"),
                 css: Some(""),
-                allow_scripts: Some(false),
                 ..WidgetEdit::default()
             },
         )
@@ -721,7 +704,7 @@ fn unknown_permission_names_are_rejected() {
 }
 
 #[test]
-fn existing_config_without_permissions_still_loads() {
+fn config_without_permissions_is_rejected() {
     let (_dir, store) = store();
     store
         .create(
@@ -730,7 +713,6 @@ fn existing_config_without_permissions_still_loads() {
             WidgetEdit {
                 html: Some("<p>hi</p>"),
                 css: Some(""),
-                allow_scripts: Some(false),
                 ..WidgetEdit::default()
             },
         )
@@ -740,5 +722,24 @@ fn existing_config_without_permissions_still_loads() {
     meta.as_object_mut().unwrap().remove("permissions");
     fs::write(&config, serde_json::to_vec_pretty(&meta).unwrap()).unwrap();
 
-    assert!(store.load_meta("note").unwrap().permissions.is_empty());
+    assert!(store.load_meta("note").is_err());
+}
+
+#[test]
+fn invalid_network_declarations_fail_before_creating_a_widget_directory() {
+    let root = tempfile::tempdir().unwrap();
+    let store = Store::new(root.path());
+    store.ensure_layout().unwrap();
+    let network = vec!["https://*.example.com".to_string()];
+    assert!(store
+        .create(
+            "bad",
+            "Bad",
+            WidgetEdit {
+                network: Some(&network),
+                ..Default::default()
+            }
+        )
+        .is_err());
+    assert!(!store.widget_dir("bad").unwrap().exists());
 }

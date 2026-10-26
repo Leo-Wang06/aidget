@@ -1,7 +1,0 @@
-{
-  "title": "欢迎使用 AIDGET",
-  "description": "展示 AIDGET 的名称、版本、slogan，并用水彩便签示例演示如何向 Agent 发出第一个请求。",
-  "version": "0.1.0",
-  "allowScripts": false,
-  "dragMode": "all"
-}

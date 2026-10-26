@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerConfig};
@@ -31,7 +30,6 @@ aidget_guide is the complete authoring contract for regions, surfaces, scripts, 
 #[derive(Clone)]
 pub struct AidgetMcp {
     client: Arc<Client>,
-    store: Arc<Store>,
     tool_router: rmcp::handler::server::router::tool::ToolRouter<Self>,
 }
 
@@ -41,7 +39,7 @@ pub struct WidgetArg {
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CreateArgs {
     pub id: String,
     #[serde(default)]
@@ -50,19 +48,19 @@ pub struct CreateArgs {
     pub html: String,
     #[serde(default)]
     pub css: String,
-    #[serde(default)]
-    pub allow_scripts: bool,
     /// Native drag region: all ordinary content (default), or the top handle.
     #[serde(default)]
     pub drag_mode: WidgetDragMode,
     #[serde(default)]
     pub permissions: Vec<WidgetPermission>,
     #[serde(default)]
+    pub network: Vec<String>,
+    #[serde(default)]
     pub agents: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UpdateArgs {
     pub widget: String,
     pub base_revision: u64,
@@ -72,13 +70,13 @@ pub struct UpdateArgs {
     pub css: Option<String>,
     #[serde(default)]
     pub title: Option<String>,
-    #[serde(default)]
-    pub allow_scripts: Option<bool>,
     /// Omitted keeps the current drag policy.
     #[serde(default)]
     pub drag_mode: Option<WidgetDragMode>,
     #[serde(default)]
     pub permissions: Option<Vec<WidgetPermission>>,
+    #[serde(default)]
+    pub network: Option<Vec<String>>,
     #[serde(default)]
     pub agents: Option<String>,
 }
@@ -134,7 +132,6 @@ impl AidgetMcp {
         let socket = store.socket_path();
         AidgetMcp {
             client: Arc::new(Client::new(socket)),
-            store: Arc::new(store),
             tool_router: Self::tool_router(),
         }
     }
@@ -146,7 +143,7 @@ impl AidgetMcp {
         // whole transaction off async workers: Windows IPC owns a Tokio runtime.
         tokio::task::spawn_blocking(move || {
             if !server.client.is_running() {
-                server.ensure_ui();
+                crate::runtime::process::ensure_ui(&server.client).map_err(mcp_error)?;
             }
             server.client.call(&method, params).map_err(mcp_error)
         })
@@ -181,17 +178,10 @@ impl AidgetMcp {
             .map_err(|error| McpError::internal_error(error.to_string(), None))
     }
 
-    fn ensure_ui(&self) {
-        let socket = self.store.socket_path();
-        let client = Client::new(socket);
-        let _ = crate::runtime::process::spawn_ui();
-        let _ = client.wait_ready(Duration::from_secs(8));
-    }
-
     /// List every widget on the board with its revision and position.
     #[tool(
         name = "aidget_list",
-        description = "List widgets with id, title, revision, allowScripts and frame (display + x/y/w/h), plus boardRevision, broken directories and displays. Call this first: it is the only call needed to get revisions and display names. frame is a snapshot; drags bump boardRevision but not the widget revision.",
+        description = "List widgets with id, title, revision, permissions, network and frame (display + x/y/w/h), plus boardRevision, broken directories and displays. Call this first: it is the only call needed to get revisions and display names. frame is a snapshot; drags bump boardRevision but not the widget revision.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     pub async fn list(&self) -> std::result::Result<Json<WidgetListing>, McpError> {
@@ -215,7 +205,7 @@ impl AidgetMcp {
     /// Create a new widget directory with HTML and CSS.
     #[tool(
         name = "aidget_create",
-        description = "Create a widget. Call aidget_guide first when choosing regions or a custom visual surface. id matches [a-z0-9][a-z0-9-]{0,63} and must be unique (max 12 widgets). Optional css goes to style.css, agents to agents.md. dragMode is all (default) or handle. permissions lists host capabilities: \"location\" enables window.aidget.requestLocation(), and \"storage\" enables the per-widget window.aidget.storage API. Returns the new revision, permissions, frame and boardRevision.",
+        description = "Create a widget. Call aidget_guide first when choosing regions or a custom visual surface. id matches [a-z0-9][a-z0-9-]{0,63} and must be unique (max 12 widgets). Optional css goes to style.css, agents to agents.md. dragMode is all (default) or handle. permissions lists capabilities (script enables JavaScript); network lists exact HTTPS origins: \"location\" enables window.aidget.requestLocation(), and \"storage\" enables the per-widget window.aidget.storage API. Returns the new revision, permissions, frame and boardRevision.",
         annotations(destructive_hint = false, open_world_hint = false)
     )]
     pub async fn create(
@@ -231,7 +221,7 @@ impl AidgetMcp {
     /// Replace a widget's HTML, CSS, title or script flag with revision CAS.
     #[tool(
         name = "aidget_update",
-        description = "Whole-file update of html/css/title/allowScripts/dragMode/permissions/agents with baseRevision CAS. Omitted fields keep their current value; permissions [] removes every declared capability. Prefer aidget_patch for text-only changes. Never changes position: the ack has no frame, and a frame seen earlier is not evidence this call moved the widget.",
+        description = "Whole-file update of html/css/title/dragMode/permissions/network/agents with baseRevision CAS. Omitted fields keep their current value; permissions [] removes every declared capability. Prefer aidget_patch for text-only changes. Never changes position: the ack has no frame, and a frame seen earlier is not evidence this call moved the widget.",
         annotations(destructive_hint = true, open_world_hint = false)
     )]
     pub async fn update(

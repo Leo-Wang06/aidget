@@ -7,3 +7,4 @@ pub mod transport;
 pub mod widgets;
 
 pub use common::error::{Error, Result};
+pub mod community;

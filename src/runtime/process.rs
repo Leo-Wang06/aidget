@@ -130,3 +130,17 @@ pub fn spawn_ui() -> Result<()> {
         .map_err(|error| Error::Other(format!("cannot start aidget ui: {error}")))?;
     Ok(())
 }
+
+/// Start the resident UI when absent and require a real bridge response.
+pub fn ensure_ui(client: &crate::transport::client::Client) -> Result<()> {
+    if client.is_running() {
+        return Ok(());
+    }
+    if !client.is_connectable() {
+        spawn_ui()?;
+    }
+    if !client.wait_ready(std::time::Duration::from_secs(12)) {
+        return Err(crate::Error::Timeout);
+    }
+    Ok(())
+}

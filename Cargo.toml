@@ -1,7 +1,9 @@
 [package]
 name = "aidget"
+default-run = "aidget"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.92"
 description = "Agent-controllable desktop widgets"
 license = "MIT"
 
@@ -14,36 +16,55 @@ name = "aidget"
 path = "src/main.rs"
 
 [build-dependencies]
-tauri-build = { version = "2.5", features = [] }
+tauri-build = { version = "2.7.4", features = [] }
 
 [dependencies]
-base64 = "0.22"
+base64 = "0.23.1"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5", features = ["derive"] }
-dirs = "6"
+dirs = "7.0.0"
 include_dir = "0.7"
 libc = "0.2"
-lol_html = "3.0"
-notify = "8"
+lol_html = "3.0.2"
+notify = "8.2.1"
 percent-encoding = "2"
-rmcp = { version = "3.5", features = ["server", "macros", "schemars", "transport-io"] }
+rmcp = { version = "3.7.0", features = ["server", "macros", "schemars", "transport-io"] }
 schemars = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_yaml = "0.9"
-tauri = { version = "2.12", features = ["tray-icon"] }
+tauri = { version = "2.12.5", features = ["tray-icon"] }
 tauri-plugin-autostart = "2"
-tauri-plugin-opener = "~2.5.5"
+tauri-plugin-opener = "2.7.2"
 thiserror = "2"
 toml = "1.1"
 toml_edit = "0.25"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "io-util"] }
-uuid = { version = "1", features = ["v4"] }
+tokio = { version = "1.54.1", features = [
+  "rt-multi-thread",
+  "macros",
+  "sync",
+  "time",
+  "net",
+  "io-util",
+] }
+uuid = { version = "1.29.0", features = ["v4"] }
+reqwest = { version = "0.13.5", default-features = false, features = [
+  "blocking",
+  "json",
+  "rustls",
+] }
+sha2 = "0.11.1"
+flate2 = "1.1.10"
+tar = "0.4.46"
+semver = "1.0.28"
+fs2 = "0.4.3"
+ts-rs = "12.0.1"
+tempfile = "3"
 
 [target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
-cairo-rs = { version = "0.18", features = ["png"] }
+cairo-rs = { version = "0.22.9", default-features = false, features = ["png"] }
 webkit2gtk = "2.0"
-zbus = { version = "5", default-features = false, features = ["async-io", "blocking-api"] }
+zbus = { version = "6.1.0", default-features = false, features = ["tokio", "proxy"] }
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.39"
@@ -53,7 +74,6 @@ windows = { version = "0.62", features = [
   "Win32_Foundation",
   "Win32_System_WinRT",
 ] }
-windows-core = "0.62"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6"
@@ -79,12 +99,7 @@ objc2-core-location = { version = "0.3", features = [
   "CLError",
   "block2",
 ] }
-objc2-foundation = { version = "0.3", features = [
-  "NSData",
-  "NSError",
-  "NSString",
-  "NSValue",
-] }
+objc2-foundation = { version = "0.3", features = ["NSData", "NSError", "NSString", "NSValue"] }
 objc2-web-kit = { version = "0.3", features = ["WKWebView", "WKSnapshotConfiguration"] }
 
 [dev-dependencies]

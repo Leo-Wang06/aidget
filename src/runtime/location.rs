@@ -130,7 +130,7 @@ mod platform {
     /// The platform's own wait, kept just inside the widget-facing timeout.
     const FIX_TIMEOUT: Duration = Duration::from_secs(18);
 
-    fn unavailable<T>(result: windows_core::Result<T>) -> Result<T> {
+    fn unavailable<T>(result: windows::core::Result<T>) -> Result<T> {
         result.map_err(|_| Error::Location(LocationError::Unavailable))
     }
 
@@ -207,8 +207,8 @@ mod platform {
 mod platform {
     use std::time::{Duration, Instant};
 
-    use zbus::blocking::Proxy;
-    use zbus::zvariant::OwnedObjectPath;
+    use zbus::OwnedObjectPath;
+    use zbus::Proxy;
 
     use super::{LocationError, LocationFix};
     use crate::common::error::{Error, Result};
@@ -224,9 +224,7 @@ mod platform {
 
     pub async fn request(app: &tauri::AppHandle) -> Result<LocationFix> {
         let desktop_id = app.config().identifier.to_string();
-        tokio::task::spawn_blocking(move || collect(desktop_id))
-            .await
-            .map_err(|_| Error::Location(LocationError::Unavailable))?
+        collect(desktop_id).await
     }
 
     /// A D-Bus-level failure means the service could not be reached at all.
@@ -243,30 +241,28 @@ mod platform {
         })
     }
 
-    fn collect(desktop_id: String) -> Result<LocationFix> {
-        let connection = unavailable(zbus::blocking::Connection::session())?;
-        let manager = unavailable(Proxy::new(
-            &connection,
-            SERVICE,
-            MANAGER_PATH,
-            MANAGER_IFACE,
-        ))?;
-        let client_path: OwnedObjectPath = denied(manager.call("GetClient", &()))?;
-        let client = unavailable(Proxy::new(&connection, SERVICE, client_path, CLIENT_IFACE))?;
+    async fn collect(desktop_id: String) -> Result<LocationFix> {
+        let connection = unavailable(zbus::Connection::session().await)?;
+        let manager =
+            unavailable(Proxy::new(&connection, SERVICE, MANAGER_PATH, MANAGER_IFACE).await)?;
+        let client_path: OwnedObjectPath = denied(manager.call("GetClient", &()).await)?;
+        let client =
+            unavailable(Proxy::new(&connection, SERVICE, client_path, CLIENT_IFACE).await)?;
         client
             .set_property("DesktopId", desktop_id.as_str())
+            .await
             .map_err(|_| Error::Location(LocationError::Unavailable))?;
-        denied(client.call::<_, _, ()>("Start", &()))?;
+        denied(client.call::<_, _, ()>("Start", &()).await)?;
 
-        let location = match wait_for_location(&client) {
+        let location = match wait_for_location(&client).await {
             Ok(location) => location,
             Err(error) => {
-                let _ = client.call_method("Stop", &());
+                let _ = client.call_method("Stop", &()).await;
                 return Err(error);
             }
         };
-        let fix = read_fix(&location);
-        let _ = client.call_method("Stop", &());
+        let fix = read_fix(&location).await;
+        let _ = client.call_method("Stop", &()).await;
         fix
     }
 
@@ -274,35 +270,32 @@ mod platform {
     ///
     /// An unlocated client keeps reporting the root path, so only a real
     /// `/org/freedesktop/GeoClue2/Location/N` answers the wait.
-    fn wait_for_location(client: &Proxy<'_>) -> Result<Proxy<'static>> {
+    async fn wait_for_location(client: &Proxy<'_>) -> Result<Proxy<'static>> {
         let deadline = Instant::now() + FIX_TIMEOUT;
         loop {
-            if let Ok(path) = client.get_property::<OwnedObjectPath>("Location") {
+            if let Ok(path) = client.get_property::<OwnedObjectPath>("Location").await {
                 if path
                     .as_str()
                     .starts_with("/org/freedesktop/GeoClue2/Location/")
                 {
                     let connection = client.connection().clone();
-                    return unavailable(Proxy::new_owned(
-                        connection,
-                        SERVICE,
-                        path,
-                        LOCATION_IFACE,
-                    ));
+                    return unavailable(
+                        Proxy::new_owned(connection, SERVICE, path, LOCATION_IFACE).await,
+                    );
                 }
             }
             if Instant::now() >= deadline {
                 return Err(Error::Location(LocationError::Timeout));
             }
-            std::thread::sleep(Duration::from_millis(200));
+            tokio::time::sleep(Duration::from_millis(200)).await;
         }
     }
 
-    fn read_fix(location: &Proxy<'_>) -> Result<LocationFix> {
+    async fn read_fix(location: &Proxy<'_>) -> Result<LocationFix> {
         Ok(LocationFix {
-            latitude: unavailable(location.get_property("Latitude"))?,
-            longitude: unavailable(location.get_property("Longitude"))?,
-            accuracy: unavailable(location.get_property("Accuracy"))?,
+            latitude: unavailable(location.get_property("Latitude").await)?,
+            longitude: unavailable(location.get_property("Longitude").await)?,
+            accuracy: unavailable(location.get_property("Accuracy").await)?,
             // GeoClue resolves coordinates only, so `place` stays empty rather
             // than being invented; aidget never falls back to IP geolocation.
             place: String::new(),

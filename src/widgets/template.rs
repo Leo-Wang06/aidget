@@ -1,16 +1,19 @@
+//! Built-in packages use the same portable files as community packages.
+use super::{
+    model::WidgetMeta,
+    package::{PackageManifest, WidgetConfig},
+    store::{Store, BOOTSTRAP_MARKER},
+};
+use crate::common::{
+    error::{Error, Result},
+    utils::atomic_write,
+};
 use include_dir::{include_dir, Dir};
 use serde::Serialize;
-use std::collections::BTreeMap;
-use std::fs;
-use std::path::Path;
-
-use crate::common::error::{Error, Result};
-use crate::common::utils::atomic_write;
-use crate::widgets::model::{validate_id, WidgetDragMode, WidgetMeta, WidgetSource, MAX_WIDGETS};
-use crate::widgets::store::{Store, BOOTSTRAP_MARKER, CONFIG_FILE};
-
+use std::{fs, path::Path};
 static BUILTIN: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/widgets");
 
+/// Display metadata for a bundled widget package.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TemplateSummary {
@@ -20,92 +23,52 @@ pub struct TemplateSummary {
     pub version: String,
 }
 
-pub fn list() -> Vec<TemplateSummary> {
-    let mut templates: BTreeMap<String, TemplateSummary> = BTreeMap::new();
-    for dir in BUILTIN.dirs() {
-        let Some(id) = dir.path().file_name().and_then(|n| n.to_str()) else {
-            continue;
-        };
-        if validate_id(id).is_err() {
-            continue;
-        }
-        let Some(file) = dir.get_file(dir.path().join("template.json")) else {
-            continue;
-        };
-        let Ok(parsed) = serde_json::from_slice::<TemplateManifest>(file.contents()) else {
-            continue;
-        };
-        templates.insert(
-            id.to_string(),
-            TemplateSummary {
-                id: id.to_string(),
-                title: parsed.title,
-                description: parsed.description,
-                version: parsed.version,
-            },
-        );
-    }
-    templates.into_values().collect()
+/// Read every bundled manifest, reporting invalid bundled content explicitly.
+pub fn list() -> Result<Vec<TemplateSummary>> {
+    BUILTIN
+        .dirs()
+        .map(|dir| {
+            let id = dir
+                .path()
+                .file_name()
+                .and_then(|n| n.to_str())
+                .ok_or_else(|| Error::InvalidParams("invalid built-in directory".into()))?;
+            let (config, package) = metadata(id)?;
+            Ok(TemplateSummary {
+                id: config.id,
+                title: config.title,
+                description: package.description,
+                version: package.version,
+            })
+        })
+        .collect()
 }
-
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct TemplateManifest {
-    title: String,
-    description: String,
-    version: String,
-    #[serde(rename = "allowScripts")]
-    allow_scripts: bool,
-    #[serde(rename = "dragMode", default)]
-    drag_mode: WidgetDragMode,
+/// Read a built-in package's canonical portable metadata.
+pub fn metadata(id: &str) -> Result<(WidgetConfig, PackageManifest)> {
+    super::model::validate_id(id)?;
+    let dir = BUILTIN
+        .get_dir(id)
+        .ok_or_else(|| Error::NotFound(id.into()))?;
+    let read = |name| {
+        dir.get_file(Path::new(id).join(name))
+            .ok_or_else(|| Error::NotFound(format!("{id}/{name}")))
+    };
+    let config: WidgetConfig = serde_json::from_slice(read("config.json")?.contents())?;
+    let package: PackageManifest = serde_json::from_slice(read("package.json")?.contents())?;
+    config.validate()?;
+    package.validate()?;
+    Ok((config, package))
 }
-
+/// Install a complete bundled package using the same commit path as downloads.
 pub fn install(store: &Store, template_id: &str, target_id: &str) -> Result<WidgetMeta> {
-    validate_id(template_id)?;
-    validate_id(target_id)?;
-
-    let existing = store.widget_ids()?;
-    if existing.iter().any(|id| id == target_id) {
-        return Err(Error::InvalidParams(format!(
-            "widget `{target_id}` already exists"
-        )));
-    }
-    if existing.len() >= MAX_WIDGETS {
-        return Err(Error::InvalidParams(format!(
-            "widget limit reached ({MAX_WIDGETS})"
-        )));
-    }
-
+    let (config, package) = metadata(template_id)?;
     let dir = BUILTIN
         .get_dir(template_id)
-        .ok_or_else(|| Error::NotFound(template_id.to_string()))?;
-    let manifest = dir
-        .get_file(dir.path().join("template.json"))
-        .ok_or_else(|| Error::NotFound(template_id.to_string()))?;
-    let manifest: TemplateManifest = serde_json::from_slice(manifest.contents())?;
-
-    let target = store.widget_dir(target_id)?;
-    fs::create_dir_all(target.join("assets"))?;
-
-    let mut meta = WidgetMeta::new(target_id, &manifest.title, manifest.allow_scripts);
-    meta.drag_mode = manifest.drag_mode;
-    meta.version = manifest.version.clone();
-    meta.source = Some(WidgetSource {
-        kind: "builtin".to_string(),
-        id: template_id.to_string(),
-        version: manifest.version,
-    });
-
-    copy_tree(dir, &target)?;
-
-    atomic_write(
-        &target.join(CONFIG_FILE),
-        &serde_json::to_vec_pretty(&meta)?,
-    )?;
-    store.ensure_frame(target_id, existing.len())?;
-    Ok(meta)
+        .ok_or_else(|| Error::NotFound(template_id.into()))?;
+    let staged = tempfile::tempdir_in(store.state_dir())?;
+    copy_tree(dir, staged.path())?;
+    super::install::commit(store, staged.path(), config, &package, target_id)
 }
-
 fn copy_tree(dir: &Dir<'_>, target: &Path) -> Result<()> {
     for entry in dir.entries() {
         match entry {
@@ -113,36 +76,30 @@ fn copy_tree(dir: &Dir<'_>, target: &Path) -> Result<()> {
                 let relative = child
                     .path()
                     .strip_prefix(dir.path())
-                    .map_err(|error| Error::Other(error.to_string()))?;
+                    .map_err(|e| Error::Other(e.to_string()))?;
                 let destination = target.join(relative);
                 fs::create_dir_all(&destination)?;
-                copy_tree(child, target)?;
+                copy_tree(child, &destination)?;
             }
             include_dir::DirEntry::File(file) => {
                 let relative = file
                     .path()
                     .strip_prefix(dir.path())
-                    .map_err(|error| Error::Other(error.to_string()))?;
-                if relative == Path::new("template.json") || relative == Path::new(CONFIG_FILE) {
-                    continue;
-                }
-                let destination = target.join(relative);
-                if let Some(parent) = destination.parent() {
-                    fs::create_dir_all(parent)?;
-                }
-                atomic_write(&destination, file.contents())?;
+                    .map_err(|e| Error::Other(e.to_string()))?;
+                atomic_write(&target.join(relative), file.contents())?;
             }
         }
     }
     Ok(())
 }
-
-pub fn agents(template_id: &str) -> Option<String> {
+/// Author guidance bundled with this template.
+pub fn agents(id: &str) -> Option<String> {
     BUILTIN
-        .get_file(Path::new(template_id).join("agents.md"))
-        .and_then(|file| String::from_utf8(file.contents().to_vec()).ok())
+        .get_file(Path::new(id).join("agents.md"))
+        .and_then(|f| f.contents_utf8())
+        .map(str::to_string)
 }
-
+/// Install the welcome package only when bootstrapping an empty data directory.
 pub fn bootstrap_welcome(store: &Store) -> Result<()> {
     let marker = store.root().join(BOOTSTRAP_MARKER);
     if marker.exists() {
@@ -151,6 +108,5 @@ pub fn bootstrap_welcome(store: &Store) -> Result<()> {
     if store.widget_ids()?.is_empty() {
         install(store, "welcome", "welcome")?;
     }
-    atomic_write(&marker, b"")?;
-    Ok(())
+    atomic_write(&marker, b"")
 }

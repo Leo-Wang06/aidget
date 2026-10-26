@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
-import { afterNextPaint, createMainStartup } from "../../src/main/startup";
+import { describe, expect, it, vi } from 'vite-plus/test';
 
-describe("main window startup", () => {
-  it("waits for two animation frames", async () => {
+import { afterNextPaint, createMainStartup } from '../../src/main/startup';
+
+describe('main window startup', () => {
+  it('waits for two animation frames', async () => {
     const frames: FrameRequestCallback[] = [];
     const painted = afterNextPaint((callback) => frames.push(callback));
 
@@ -13,7 +14,7 @@ describe("main window startup", () => {
     await painted;
   });
 
-  it("waits for the first paint before starting widgets", async () => {
+  it('waits for the first paint before starting widgets', async () => {
     let finishPaint: (() => void) | undefined;
     const waitForPaint = vi.fn(
       () =>
@@ -32,9 +33,13 @@ describe("main window startup", () => {
     expect(startWidgets).toHaveBeenCalledTimes(1);
   });
 
-  it("starts preview refresh only after the initial widget sync", async () => {
+  it('starts preview refresh only after the initial widget sync', async () => {
     const refresh = vi.fn();
-    const startup = createMainStartup(async () => true, refresh, async () => {});
+    const startup = createMainStartup(
+      async () => true,
+      refresh,
+      async () => {},
+    );
 
     await startup.painted();
     expect(refresh).not.toHaveBeenCalled();
@@ -44,15 +49,19 @@ describe("main window startup", () => {
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
-  it("refreshes immediately when widgets were started in the background", async () => {
+  it('refreshes immediately when widgets were started in the background', async () => {
     const refresh = vi.fn();
-    const startup = createMainStartup(async () => false, refresh, async () => {});
+    const startup = createMainStartup(
+      async () => false,
+      refresh,
+      async () => {},
+    );
 
     await startup.painted();
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
-  it("does not repeat the initial startup when repaint notifications race", async () => {
+  it('does not repeat the initial startup when repaint notifications race', async () => {
     const startWidgets = vi.fn(async () => true);
     const refresh = vi.fn();
     let synced = false;

@@ -3,7 +3,7 @@ use aidget::transport::bridge::Response;
 
 #[test]
 fn round_trips_error_with_current_widget() {
-    let meta = aidget::widgets::model::WidgetMeta::new("note", "Note", false);
+    let meta = aidget::widgets::model::WidgetMeta::new("note", "Note");
     let error = Error::RevisionConflict {
         current: Box::new(ConflictCurrent::Widget(meta)),
     };

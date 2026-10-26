@@ -1,9 +1,10 @@
-import type { Locale } from "./locale";
-import type { Theme } from "./preferences";
+import type { Locale } from './locale';
+import type { Theme } from './preferences';
 
 export interface WidgetSummary {
   id: string;
   title: string;
+  packageName: string | null;
   revision: number;
   token: string;
   width: number;
@@ -25,6 +26,7 @@ export interface DeletedWidgetSummary {
 export interface MainState {
   widgets: WidgetSummary[];
   deletedWidgets: DeletedWidgetSummary[];
+  broken: { id: string; error: string }[];
   version: string;
   theme: Theme;
   language: Locale;
@@ -32,15 +34,10 @@ export interface MainState {
   lastPage: MainPage;
 }
 
-export type MainPage =
-  | "local-widgets"
-  | "community-widgets"
-  | "integrations"
-  | "general"
-  | "about";
-export type WidgetFilter = "all" | "enabled" | "disabled" | "deleted";
-export type WidgetSortOrder = "newest" | "oldest";
-export type TrayClickAction = "menu" | "window";
+export type MainPage = 'local-widgets' | 'community-widgets' | 'integrations' | 'general' | 'about';
+export type WidgetFilter = 'all' | 'enabled' | 'disabled' | 'deleted';
+export type WidgetSortOrder = 'newest' | 'oldest';
+export type TrayClickAction = 'menu' | 'window';
 
 export function sortedActiveWidgets(
   widgets: WidgetSummary[],
@@ -48,14 +45,18 @@ export function sortedActiveWidgets(
 ): WidgetSummary[] {
   return [...widgets].sort((left, right) => {
     const delta = left.createdAt - right.createdAt;
-    if (delta !== 0) return order === "oldest" ? delta : -delta;
+    if (delta !== 0) {
+      return order === 'oldest' ? delta : -delta;
+    }
     return left.id.localeCompare(right.id);
   });
 }
 
 export function matchesWidgetFilter(widget: WidgetSummary, filter: WidgetFilter): boolean {
-  if (filter === "deleted") return false;
-  return filter === "all" || (filter === "enabled" ? widget.enabled : !widget.enabled);
+  if (filter === 'deleted') {
+    return false;
+  }
+  return filter === 'all' || (filter === 'enabled' ? widget.enabled : !widget.enabled);
 }
 
 export function filteredWidgets(widgets: WidgetSummary[], filter: WidgetFilter): WidgetSummary[] {
@@ -68,7 +69,9 @@ export function sortedDeletedWidgets(
 ): DeletedWidgetSummary[] {
   return [...widgets].sort((left, right) => {
     const delta = left.createdAt - right.createdAt;
-    if (delta !== 0) return order === "oldest" ? delta : -delta;
+    if (delta !== 0) {
+      return order === 'oldest' ? delta : -delta;
+    }
     return left.trashName.localeCompare(right.trashName);
   });
 }
@@ -81,8 +84,9 @@ export function previewNeedsRefresh(
   previous: WidgetSummary | undefined,
   next: WidgetSummary,
 ): boolean {
-  return next.enabled
-    && (!previous || previewKey(previous) !== previewKey(next) || !previous.enabled);
+  return (
+    next.enabled && (!previous || previewKey(previous) !== previewKey(next) || !previous.enabled)
+  );
 }
 
 export function isEmpty(state: MainState): boolean {

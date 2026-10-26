@@ -28,7 +28,9 @@ export function createMainStartup(
   let refreshed = false;
 
   function refreshOnce() {
-    if (refreshed) return;
+    if (refreshed) {
+      return;
+    }
     refreshed = true;
     refreshPreviews();
   }
@@ -37,7 +39,9 @@ export function createMainStartup(
     await waitForPaint();
     const startedNow = await startWidgets();
     initialSyncPending = startedNow;
-    if (!startedNow || synchronized) refreshOnce();
+    if (!startedNow || synchronized) {
+      refreshOnce();
+    }
   }
 
   return {
@@ -47,7 +51,9 @@ export function createMainStartup(
     },
     synchronized() {
       synchronized = true;
-      if (initialSyncPending) refreshOnce();
+      if (initialSyncPending) {
+        refreshOnce();
+      }
     },
   };
 }

@@ -6,8 +6,8 @@
  * shell already holds, never from the payload.
  */
 
-export const WIDGET_SOURCE = "aidget-widget";
-export const HOST_SOURCE = "aidget-host";
+export const WIDGET_SOURCE = 'aidget-widget';
+export const HOST_SOURCE = 'aidget-host';
 
 export interface BridgeRequest {
   source: typeof WIDGET_SOURCE;
@@ -31,14 +31,20 @@ export function parseReady(
   source: MessageEventSource | null,
   frameWindow: Window | null,
 ): ReadySignal | null {
-  if (!frameWindow || source !== frameWindow) return null;
-  if (!data || typeof data !== "object") return null;
+  if (!frameWindow || source !== frameWindow) {
+    return null;
+  }
+  if (!data || typeof data !== 'object') {
+    return null;
+  }
   const candidate = data as { source?: unknown; type?: unknown; revision?: unknown };
-  if (candidate.source !== WIDGET_SOURCE || candidate.type !== "ready") return null;
+  if (candidate.source !== WIDGET_SOURCE || candidate.type !== 'ready') {
+    return null;
+  }
   if (
-    typeof candidate.revision !== "number"
-    || !Number.isSafeInteger(candidate.revision)
-    || candidate.revision <= 0
+    typeof candidate.revision !== 'number' ||
+    !Number.isSafeInteger(candidate.revision) ||
+    candidate.revision <= 0
   ) {
     return null;
   }
@@ -50,12 +56,22 @@ export function parseRequest(
   source: MessageEventSource | null,
   frameWindow: Window | null,
 ): BridgeRequest | null {
-  if (!frameWindow || source !== frameWindow) return null;
-  if (!data || typeof data !== "object") return null;
+  if (!frameWindow || source !== frameWindow) {
+    return null;
+  }
+  if (!data || typeof data !== 'object') {
+    return null;
+  }
   const candidate = data as Partial<BridgeRequest>;
-  if (candidate.source !== WIDGET_SOURCE) return null;
-  if (typeof candidate.id !== "string" || !candidate.id) return null;
-  if (typeof candidate.method !== "string" || !candidate.method) return null;
+  if (candidate.source !== WIDGET_SOURCE) {
+    return null;
+  }
+  if (typeof candidate.id !== 'string' || !candidate.id) {
+    return null;
+  }
+  if (typeof candidate.method !== 'string' || !candidate.method) {
+    return null;
+  }
   return {
     source: WIDGET_SOURCE,
     id: candidate.id,
@@ -65,20 +81,20 @@ export function parseRequest(
 }
 
 export function failureOf(error: unknown): BridgeFailure {
-  if (error && typeof error === "object") {
+  if (error && typeof error === 'object') {
     const shape = error as { code?: unknown; message?: unknown };
-    if (typeof shape.code === "string" && shape.code) {
+    if (typeof shape.code === 'string' && shape.code) {
       return {
         code: shape.code,
-        message: typeof shape.message === "string" ? shape.message : shape.code,
+        message: typeof shape.message === 'string' ? shape.message : shape.code,
       };
     }
   }
-  return { code: "unavailable", message: String(error) };
+  return { code: 'unavailable', message: String(error) };
 }
 
 export function permissionsMessage(permissions: string[]) {
-  return { source: HOST_SOURCE, type: "permissions", permissions };
+  return { source: HOST_SOURCE, type: 'permissions', permissions };
 }
 
 export function resultMessage(id: string, result: unknown) {
@@ -91,11 +107,11 @@ export function errorMessage(id: string, error: BridgeFailure) {
 
 /** Methods the host will serve; anything else is refused without an IPC call. */
 export const SERVED_METHODS = [
-  "location",
-  "storage_get",
-  "storage_set",
-  "storage_remove",
-  "storage_clear",
+  'location',
+  'storage_get',
+  'storage_set',
+  'storage_remove',
+  'storage_clear',
 ] as const;
 
 export function isServed(method: string): boolean {
@@ -117,48 +133,49 @@ export function routeRequest(
   params: Record<string, unknown> | undefined,
 ): BridgeRoute | null {
   switch (method) {
-    case "location":
-      return { command: "widget_location", args: {} };
-    case "storage_get":
-    case "storage_remove": {
-      const key = stringParam(params, "key");
-      if (!key) return invalidKey();
+    case 'location':
+      return { command: 'widget_location', args: {} };
+    case 'storage_get':
+    case 'storage_remove': {
+      const key = stringParam(params, 'key');
+      if (!key) {
+        return invalidKey();
+      }
       return { command: `widget_${method}`, args: { key } };
     }
-    case "storage_set": {
-      const key = stringParam(params, "key");
-      const value = stringParam(params, "value");
-      if (!key) return invalidKey();
+    case 'storage_set': {
+      const key = stringParam(params, 'key');
+      const value = stringParam(params, 'value');
+      if (!key) {
+        return invalidKey();
+      }
       if (value === null) {
         return {
           error: {
-            code: "invalid_params",
-            message: "storage value must be a string",
+            code: 'invalid_params',
+            message: 'storage value must be a string',
           },
         };
       }
-      return { command: "widget_storage_set", args: { key, value } };
+      return { command: 'widget_storage_set', args: { key, value } };
     }
-    case "storage_clear":
-      return { command: "widget_storage_clear", args: {} };
+    case 'storage_clear':
+      return { command: 'widget_storage_clear', args: {} };
     default:
       return null;
   }
 }
 
-function stringParam(
-  params: Record<string, unknown> | undefined,
-  name: string,
-): string | null {
+function stringParam(params: Record<string, unknown> | undefined, name: string): string | null {
   const value = params?.[name];
-  return typeof value === "string" ? value : null;
+  return typeof value === 'string' ? value : null;
 }
 
 function invalidKey(): BridgeRoute {
   return {
     error: {
-      code: "invalid_params",
-      message: "storage key must be a non-empty string",
+      code: 'invalid_params',
+      message: 'storage key must be a non-empty string',
     },
   };
 }

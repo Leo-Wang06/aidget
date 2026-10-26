@@ -13,6 +13,7 @@ use crate::widgets::model::{
 };
 use crate::widgets::retention;
 
+pub const PACKAGE_FILE: &str = "package.json";
 pub const CONFIG_FILE: &str = "config.json";
 pub const HTML_FILE: &str = "index.html";
 pub const CSS_FILE: &str = "style.css";
@@ -28,13 +29,13 @@ struct DeletionRecord {
 }
 
 /// Fields a whole-file update may replace. Unset fields keep their current
-/// value, so a caller can change only `allowScripts` or only `agents.md`.
+/// value, so callers can replace permissions without changing content.
 #[derive(Default, Clone, Copy)]
 pub struct WidgetEdit<'a> {
     pub html: Option<&'a str>,
     pub css: Option<&'a str>,
     pub title: Option<&'a str>,
-    pub allow_scripts: Option<bool>,
+    pub network: Option<&'a [String]>,
     /// Omitted updates preserve the current window drag policy.
     pub drag_mode: Option<WidgetDragMode>,
     /// `Some(&[])` clears every declared permission.
@@ -50,6 +51,18 @@ pub struct Store {
 impl Store {
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Store { root: root.into() }
+    }
+
+    /// Serialize installation and author writes across GUI and CLI processes.
+    pub fn write_lock(&self) -> Result<fs::File> {
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(self.root.join(".write.lock"))?;
+        fs2::FileExt::lock_exclusive(&file)?;
+        Ok(file)
     }
 
     pub fn default_root() -> PathBuf {
@@ -207,7 +220,23 @@ impl Store {
                 meta.id
             )));
         }
+        meta.config.validate()?;
+        self.load_package(id)?;
         Ok(meta)
+    }
+
+    /// Read optional npm metadata; malformed files never become local widgets.
+    pub fn load_package(&self, id: &str) -> Result<Option<super::package::PackageManifest>> {
+        let path = self.widget_dir(id)?.join(PACKAGE_FILE);
+        match fs::read(path) {
+            Ok(bytes) => {
+                let package: super::package::PackageManifest = serde_json::from_slice(&bytes)?;
+                package.validate()?;
+                Ok(Some(package))
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e.into()),
+        }
     }
 
     pub fn load_document(&self, id: &str) -> Result<WidgetDocument> {
@@ -218,6 +247,7 @@ impl Store {
         let agents = read_optional(&dir.join(AGENTS_FILE))?;
         let board = self.load_board()?;
         Ok(WidgetDocument {
+            package: self.load_package(id)?,
             meta,
             html,
             css,
@@ -235,12 +265,12 @@ impl Store {
                 Ok(meta) => {
                     let frame = board.widgets.get(&id).cloned();
                     widgets.push(WidgetSummary {
-                        id: meta.id,
-                        title: meta.title,
+                        id: meta.id.clone(),
+                        title: meta.title.clone(),
                         revision: meta.revision,
-                        allow_scripts: meta.allow_scripts,
+                        network: meta.network.clone(),
                         drag_mode: meta.drag_mode,
-                        permissions: meta.permissions,
+                        permissions: meta.permissions.clone(),
                         frame,
                     });
                 }
@@ -278,7 +308,13 @@ impl Store {
             if !config.is_file() {
                 continue;
             }
-            let meta: WidgetMeta = serde_json::from_slice(&fs::read(config)?)?;
+            // Startup migration reports broken trash entries independently.
+            let Ok(meta) = serde_json::from_slice::<WidgetMeta>(&fs::read(config)?) else {
+                continue;
+            };
+            if meta.config.validate().is_err() {
+                continue;
+            }
             validate_id(&meta.id)?;
             let frame = deletion_record(&path)?
                 .and_then(|record| record.frame)
@@ -287,8 +323,8 @@ impl Store {
                 created,
                 DeletedWidgetSummary {
                     trash_name,
-                    id: meta.id,
-                    title: meta.title,
+                    id: meta.id.clone(),
+                    title: meta.title.clone(),
                     width: frame.w,
                     height: frame.h,
                     has_preview: path.join(DELETION_PREVIEW_FILE).is_file(),
@@ -325,7 +361,7 @@ impl Store {
         let id = fs::read(path.join(CONFIG_FILE))
             .ok()
             .and_then(|bytes| serde_json::from_slice::<WidgetMeta>(&bytes).ok())
-            .map(|meta| meta.id);
+            .map(|meta| meta.id.clone());
         fs::remove_dir_all(path)?;
         if let Some(id) = id {
             crate::widgets::storage::clear(self, &id)?;
@@ -335,6 +371,7 @@ impl Store {
 
     /// Move a trashed widget back into the widget directory and restore its frame.
     pub fn restore(&self, trash_name: &str) -> Result<WidgetMeta> {
+        let _lock = self.write_lock()?;
         let source = self.trash_path(trash_name)?;
         if !source.is_dir() {
             return Err(Error::NotFound(trash_name.to_string()));
@@ -416,7 +453,7 @@ impl Store {
             widget: meta.id.clone(),
             revision: meta.revision,
             title: meta.title.clone(),
-            allow_scripts: meta.allow_scripts,
+            network: meta.network.clone(),
             drag_mode: meta.drag_mode,
             permissions: meta.permissions.clone(),
             updated_at: meta.updated_at.clone(),
@@ -430,6 +467,7 @@ impl Store {
     /// `edit` carries the same fields an update can replace, so the two entry
     /// points stay in sync as capabilities are added.
     pub fn create(&self, id: &str, title: &str, edit: WidgetEdit<'_>) -> Result<WidgetMeta> {
+        let _lock = self.write_lock()?;
         validate_id(id)?;
         let existing = self.widget_ids()?;
         if existing.iter().any(|existing| existing == id) {
@@ -444,11 +482,13 @@ impl Store {
         }
 
         let dir = self.widget_dir(id)?;
-        fs::create_dir_all(dir.join("assets"))?;
 
-        let mut meta = WidgetMeta::new(id, title, edit.allow_scripts.unwrap_or(false));
+        let mut meta = WidgetMeta::new(id, title);
         meta.drag_mode = edit.drag_mode.unwrap_or_default();
         meta.set_permissions(edit.permissions.unwrap_or(&[]));
+        meta.network = edit.network.unwrap_or(&[]).to_vec();
+        meta.config.validate()?;
+        fs::create_dir_all(dir.join("assets"))?;
         atomic_write(&dir.join(HTML_FILE), edit.html.unwrap_or("").as_bytes())?;
         if let Some(css) = edit.css.filter(|css| !css.is_empty()) {
             atomic_write(&dir.join(CSS_FILE), css.as_bytes())?;
@@ -477,6 +517,7 @@ impl Store {
     }
 
     pub fn update(&self, id: &str, base_revision: u64, edit: WidgetEdit<'_>) -> Result<WidgetMeta> {
+        let _lock = self.write_lock()?;
         let dir = self.widget_dir(id)?;
         let mut meta = self.load_meta(id)?;
         if meta.revision != base_revision {
@@ -485,6 +526,19 @@ impl Store {
             });
         }
 
+        if let Some(title) = edit.title {
+            meta.title = title.to_string();
+        }
+        if let Some(network) = edit.network {
+            meta.network = network.to_vec();
+        }
+        if let Some(drag_mode) = edit.drag_mode {
+            meta.drag_mode = drag_mode;
+        }
+        if let Some(permissions) = edit.permissions {
+            meta.set_permissions(permissions);
+        }
+        meta.config.validate()?;
         if let Some(html) = edit.html {
             atomic_write(&dir.join(HTML_FILE), html.as_bytes())?;
         }
@@ -493,18 +547,6 @@ impl Store {
         }
         if let Some(agents) = edit.agents {
             atomic_write(&dir.join(AGENTS_FILE), agents.as_bytes())?;
-        }
-        if let Some(title) = edit.title {
-            meta.title = title.to_string();
-        }
-        if let Some(allow_scripts) = edit.allow_scripts {
-            meta.allow_scripts = allow_scripts;
-        }
-        if let Some(drag_mode) = edit.drag_mode {
-            meta.drag_mode = drag_mode;
-        }
-        if let Some(permissions) = edit.permissions {
-            meta.set_permissions(permissions);
         }
         meta.revision += 1;
         meta.updated_at = chrono::Local::now().to_rfc3339();
@@ -532,6 +574,7 @@ impl Store {
         base_revision: u64,
         edits: &[(String, String)],
     ) -> Result<WidgetMeta> {
+        let _lock = self.write_lock()?;
         let dir = self.widget_dir(id)?;
         let meta = self.load_meta(id)?;
         if meta.revision != base_revision {
@@ -559,6 +602,7 @@ impl Store {
     /// Move a widget into the trash and return the directory it landed in, so
     /// the caller can report a path that actually restores it.
     pub fn delete(&self, id: &str) -> Result<std::path::PathBuf> {
+        let _lock = self.write_lock()?;
         let dir = self.widget_dir(id)?;
         if !dir.is_dir() {
             return Err(Error::NotFound(id.to_string()));
@@ -595,6 +639,7 @@ impl Store {
     }
 
     pub fn move_widget(&self, id: &str, base_revision: u64, frame: WidgetFrame) -> Result<Board> {
+        let _lock = self.write_lock()?;
         validate_id(id)?;
         self.load_meta(id)?;
         let mut board = self.load_board()?;

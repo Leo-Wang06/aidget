@@ -53,6 +53,11 @@ pub enum Command {
         #[command(subcommand)]
         command: TemplateCommand,
     },
+    /// Browse reviewed widgets or install a complete npm package.
+    Community {
+        #[command(subcommand)]
+        command: CommunityCommand,
+    },
     /// Render a widget window to PNG (requires the UI).
     Screenshot {
         widget: String,
@@ -97,8 +102,9 @@ pub struct CreateArgs {
     pub html: Option<String>,
     #[arg(long)]
     pub css: Option<String>,
+    /// Exact HTTPS origins, comma separated; none means no network access.
     #[arg(long)]
-    pub allow_scripts: bool,
+    pub network: Option<String>,
     /// Start dragging from ordinary content or only the top handle.
     #[arg(long, value_enum)]
     pub drag_mode: Option<WidgetDragMode>,
@@ -118,8 +124,9 @@ pub struct UpdateArgs {
     pub css_file: Option<PathBuf>,
     #[arg(long)]
     pub title: Option<String>,
+    /// Replace the network origin list; none clears it.
     #[arg(long)]
-    pub allow_scripts: Option<bool>,
+    pub network: Option<String>,
     /// Replace the window drag policy; omitted keeps the current mode.
     #[arg(long, value_enum)]
     pub drag_mode: Option<WidgetDragMode>,
@@ -180,6 +187,15 @@ pub enum TemplateCommand {
     },
 }
 
+/// Native package distribution without requiring npm or Git on the client.
+#[derive(Subcommand)]
+pub enum CommunityCommand {
+    /// List reviewed packages from official main.
+    List,
+    /// Install a complete npm name and an optional exact version.
+    Install { package: String },
+}
+
 pub fn run(cli: Cli) -> Result<()> {
     let store = Store::open_default();
     store.ensure_layout()?;
@@ -192,6 +208,28 @@ pub fn run(cli: Cli) -> Result<()> {
         Command::Widget { command } => widget_command(&store, command, json),
         Command::Board { command } => board_command(&store, command, json),
         Command::Displays => displays_command(&store, json),
+        Command::Community { command } => {
+            let client = Client::new(store.socket_path());
+            crate::runtime::process::ensure_ui(&client)?;
+            let result = match command {
+                CommunityCommand::List => client.call_with_timeout(
+                    "community_list",
+                    json!({}),
+                    std::time::Duration::from_secs(180),
+                )?,
+                CommunityCommand::Install { package } => client.call_with_timeout(
+                    "community_install",
+                    json!({"package":package}),
+                    std::time::Duration::from_secs(180),
+                )?,
+            };
+            if json {
+                print_json(&result)?;
+            } else {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            }
+            Ok(())
+        }
         Command::Template { command } => template_command(&store, command, json),
         Command::Screenshot { widget, out, scale } => {
             screenshot_command(&store, &widget, out, scale, json)
@@ -237,7 +275,7 @@ fn widget_command(store: &Store, command: WidgetCommand, json: bool) -> Result<(
                     "id={} revision={} scripts={} drag={} permissions={} frame={}",
                     document.meta.id,
                     document.meta.revision,
-                    document.meta.allow_scripts,
+                    document.meta.grants(WidgetPermission::Script),
                     serde_json::to_string(&document.meta.drag_mode)?,
                     serde_json::to_string(&document.meta.permissions)?,
                     document
@@ -276,7 +314,7 @@ fn widget_command(store: &Store, command: WidgetCommand, json: bool) -> Result<(
                 WidgetEdit {
                     html: Some(&html.unwrap_or_default()),
                     css: Some(&css),
-                    allow_scripts: Some(args.allow_scripts),
+                    network: Some(&parse_network(args.network.as_deref())),
                     drag_mode: args.drag_mode,
                     permissions: Some(&permissions),
                     agents: agents.as_deref(),
@@ -306,7 +344,7 @@ fn widget_command(store: &Store, command: WidgetCommand, json: bool) -> Result<(
                     html: html.as_deref(),
                     css: css.as_deref(),
                     title: args.title.as_deref(),
-                    allow_scripts: args.allow_scripts,
+                    network: args.network.as_deref().map(parse_network_value).as_deref(),
                     drag_mode: args.drag_mode,
                     permissions: permissions.as_deref(),
                     agents: agents.as_deref(),
@@ -444,7 +482,7 @@ fn displays_command(store: &Store, json: bool) -> Result<()> {
 fn template_command(store: &Store, command: TemplateCommand, json: bool) -> Result<()> {
     match command {
         TemplateCommand::List => {
-            let templates = template::list();
+            let templates = template::list()?;
             if json {
                 print_json(&templates)?;
             } else {
@@ -541,7 +579,9 @@ fn doctor_command(store: &Store, json: bool) -> Result<()> {
         match store.load_meta(&id) {
             Ok(meta) => println!(
                 "  ok       {:<24} rev {} scripts={}",
-                id, meta.revision, meta.allow_scripts
+                id,
+                meta.revision,
+                meta.grants(WidgetPermission::Script)
             ),
             Err(error) => println!("  broken   {:<24} {error}", id),
         }
@@ -582,8 +622,7 @@ fn read_input(inline: Option<String>, file: Option<PathBuf>) -> Result<Option<St
     }
 }
 
-/// `--permissions storage` is additive; `none` is how a caller clears it
-/// because a flag cannot otherwise express "present but empty".
+/// Replace the full permission list; `none` expresses an explicitly empty list.
 fn parse_permissions(raw: Option<&str>) -> Result<Vec<WidgetPermission>> {
     let Some(raw) = raw else {
         return Ok(Vec::new());
@@ -596,14 +635,27 @@ fn parse_permissions(raw: Option<&str>) -> Result<Vec<WidgetPermission>> {
     {
         match part {
             "none" | "clear" => return Ok(Vec::new()),
+            "script" => permissions.push(WidgetPermission::Script),
             "location" => permissions.push(WidgetPermission::Location),
             "storage" => permissions.push(WidgetPermission::Storage),
             other => {
                 return Err(Error::InvalidParams(format!(
-                    "unknown permission `{other}`; supported: location, storage, none"
+                    "unknown permission `{other}`; supported: script, location, storage, none"
                 )))
             }
         }
     }
     Ok(permissions)
+}
+
+/// Parse the complete network declaration; metadata validation checks origins.
+fn parse_network(raw: Option<&str>) -> Vec<String> {
+    raw.map(parse_network_value).unwrap_or_default()
+}
+fn parse_network_value(raw: &str) -> Vec<String> {
+    if raw == "none" {
+        vec![]
+    } else {
+        raw.split(',').map(str::trim).map(str::to_string).collect()
+    }
 }

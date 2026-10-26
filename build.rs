@@ -13,6 +13,7 @@ fn main() {
         return;
     }
     println!("cargo:rerun-if-changed=ui/src");
+    println!("cargo:rerun-if-changed=widgets");
     println!("cargo:rerun-if-changed=ui/assets");
     println!("cargo:rerun-if-changed=ui/widget.html");
     println!("cargo:rerun-if-changed=ui/main.html");

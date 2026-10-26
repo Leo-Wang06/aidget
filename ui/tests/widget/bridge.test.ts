@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from 'vite-plus/test';
+
 import {
   errorMessage,
   failureOf,
@@ -11,154 +12,152 @@ import {
   HOST_SOURCE,
   SERVED_METHODS,
   WIDGET_SOURCE,
-} from "../../src/widget/bridge";
+} from '../../src/widget/bridge';
 
 const frameWindow = {} as Window;
 const otherWindow = {} as Window;
 
-describe("parseReady", () => {
-  it("accepts a ready signal from the widget iframe", () => {
+describe('parseReady', () => {
+  it('accepts a ready signal from the widget iframe', () => {
     expect(
-      parseReady(
-        { source: WIDGET_SOURCE, type: "ready", revision: 7 },
-        frameWindow,
-        frameWindow,
-      ),
+      parseReady({ source: WIDGET_SOURCE, type: 'ready', revision: 7 }, frameWindow, frameWindow),
     ).toEqual({ revision: 7 });
   });
 
-  it("rejects other windows, sources, types, and revisions", () => {
-    const ready = { source: WIDGET_SOURCE, type: "ready", revision: 7 };
+  it('rejects other windows, sources, types, and revisions', () => {
+    const ready = { source: WIDGET_SOURCE, type: 'ready', revision: 7 };
     expect(parseReady(ready, otherWindow, frameWindow)).toBeNull();
     expect(parseReady(ready, null, frameWindow)).toBeNull();
     expect(parseReady({ ...ready, source: HOST_SOURCE }, frameWindow, frameWindow)).toBeNull();
-    expect(parseReady({ ...ready, type: "permissions" }, frameWindow, frameWindow)).toBeNull();
+    expect(parseReady({ ...ready, type: 'permissions' }, frameWindow, frameWindow)).toBeNull();
     expect(parseReady({ ...ready, revision: 0 }, frameWindow, frameWindow)).toBeNull();
-    expect(parseReady({ ...ready, revision: "7" }, frameWindow, frameWindow)).toBeNull();
+    expect(parseReady({ ...ready, revision: '7' }, frameWindow, frameWindow)).toBeNull();
   });
 });
 
-describe("parseRequest", () => {
-  it("accepts a request from the widget iframe", () => {
+describe('parseRequest', () => {
+  it('accepts a request from the widget iframe', () => {
     const request = parseRequest(
-      { source: WIDGET_SOURCE, id: "aidget-1", method: "location" },
+      { source: WIDGET_SOURCE, id: 'aidget-1', method: 'location' },
       frameWindow,
       frameWindow,
     );
     expect(request).toEqual({
       source: WIDGET_SOURCE,
-      id: "aidget-1",
-      method: "location",
+      id: 'aidget-1',
+      method: 'location',
       params: undefined,
     });
   });
 
-  it("ignores messages from any other window", () => {
-    const data = { source: WIDGET_SOURCE, id: "aidget-2", method: "location" };
+  it('ignores messages from any other window', () => {
+    const data = { source: WIDGET_SOURCE, id: 'aidget-2', method: 'location' };
     expect(parseRequest(data, otherWindow, frameWindow)).toBeNull();
     expect(parseRequest(data, null, frameWindow)).toBeNull();
   });
 
-  it("ignores messages without an id or method", () => {
-    expect(parseRequest({ source: WIDGET_SOURCE, method: "location" }, frameWindow, frameWindow)).toBeNull();
-    expect(parseRequest({ source: WIDGET_SOURCE, id: "x" }, frameWindow, frameWindow)).toBeNull();
-    expect(parseRequest("nope", frameWindow, frameWindow)).toBeNull();
+  it('ignores messages without an id or method', () => {
+    expect(
+      parseRequest({ source: WIDGET_SOURCE, method: 'location' }, frameWindow, frameWindow),
+    ).toBeNull();
+    expect(parseRequest({ source: WIDGET_SOURCE, id: 'x' }, frameWindow, frameWindow)).toBeNull();
+    expect(parseRequest('nope', frameWindow, frameWindow)).toBeNull();
   });
 
-  it("only accepts the widget source tag", () => {
-    const forged = { source: HOST_SOURCE, id: "aidget-3", method: "location" };
+  it('only accepts the widget source tag', () => {
+    const forged = { source: HOST_SOURCE, id: 'aidget-3', method: 'location' };
     expect(parseRequest(forged, frameWindow, frameWindow)).toBeNull();
   });
 });
 
-describe("failureOf", () => {
-  it("keeps the code the host attached", () => {
-    expect(failureOf({ code: "denied", message: "location denied" })).toEqual({
-      code: "denied",
-      message: "location denied",
+describe('failureOf', () => {
+  it('keeps the code the host attached', () => {
+    expect(failureOf({ code: 'denied', message: 'location denied' })).toEqual({
+      code: 'denied',
+      message: 'location denied',
     });
   });
 
-  it("falls back to unavailable for an opaque rejection", () => {
-    expect(failureOf("boom")).toEqual({ code: "unavailable", message: "boom" });
-    expect(failureOf(new Error("x"))).toEqual({ code: "unavailable", message: "Error: x" });
+  it('falls back to unavailable for an opaque rejection', () => {
+    expect(failureOf('boom')).toEqual({ code: 'unavailable', message: 'boom' });
+    expect(failureOf(new Error('x'))).toEqual({ code: 'unavailable', message: 'Error: x' });
   });
 });
 
-describe("host messages", () => {
-  it("tags permission updates for the widget", () => {
-    expect(permissionsMessage(["location"])).toEqual({
+describe('host messages', () => {
+  it('tags permission updates for the widget', () => {
+    expect(permissionsMessage(['location'])).toEqual({
       source: HOST_SOURCE,
-      type: "permissions",
-      permissions: ["location"],
+      type: 'permissions',
+      permissions: ['location'],
     });
   });
 
-  it("answers a request by id", () => {
-    expect(resultMessage("aidget-4", { latitude: 1 })).toEqual({
+  it('answers a request by id', () => {
+    expect(resultMessage('aidget-4', { latitude: 1 })).toEqual({
       source: HOST_SOURCE,
-      id: "aidget-4",
+      id: 'aidget-4',
       ok: true,
       result: { latitude: 1 },
     });
-    expect(errorMessage("aidget-5", { code: "timeout", message: "timeout" })).toEqual({
+    expect(errorMessage('aidget-5', { code: 'timeout', message: 'timeout' })).toEqual({
       source: HOST_SOURCE,
-      id: "aidget-5",
+      id: 'aidget-5',
       ok: false,
-      error: { code: "timeout", message: "timeout" },
+      error: { code: 'timeout', message: 'timeout' },
     });
   });
 });
 
-describe("isServed", () => {
-  it("only serves the methods the host implements", () => {
-    expect(SERVED_METHODS).toContain("location");
-    expect(SERVED_METHODS).toContain("storage_get");
-    expect(SERVED_METHODS).toContain("storage_set");
-    expect(SERVED_METHODS).toContain("storage_remove");
-    expect(SERVED_METHODS).toContain("storage_clear");
-    expect(isServed("location")).toBe(true);
-    expect(isServed("camera")).toBe(false);
+describe('isServed', () => {
+  it('only serves the methods the host implements', () => {
+    expect(SERVED_METHODS).toContain('location');
+    expect(SERVED_METHODS).toContain('storage_get');
+    expect(SERVED_METHODS).toContain('storage_set');
+    expect(SERVED_METHODS).toContain('storage_remove');
+    expect(SERVED_METHODS).toContain('storage_clear');
+    expect(isServed('location')).toBe(true);
+    expect(isServed('camera')).toBe(false);
   });
 });
 
-describe("routeRequest", () => {
-  it("maps location and storage calls to Tauri commands", () => {
-    expect(routeRequest("location", undefined)).toEqual({
-      command: "widget_location",
+describe('routeRequest', () => {
+  it('maps location and storage calls to Tauri commands', () => {
+    expect(routeRequest('location', undefined)).toEqual({
+      command: 'widget_location',
       args: {},
     });
-    expect(routeRequest("storage_get", { key: "todo" })).toEqual({
-      command: "widget_storage_get",
-      args: { key: "todo" },
+    expect(routeRequest('storage_get', { key: 'todo' })).toEqual({
+      command: 'widget_storage_get',
+      args: { key: 'todo' },
     });
-    expect(routeRequest("storage_set", { key: "todo", value: "done" })).toEqual({
-      command: "widget_storage_set",
-      args: { key: "todo", value: "done" },
+    expect(routeRequest('storage_set', { key: 'todo', value: 'done' })).toEqual({
+      command: 'widget_storage_set',
+      args: { key: 'todo', value: 'done' },
     });
-    expect(routeRequest("storage_remove", { key: "todo" })).toEqual({
-      command: "widget_storage_remove",
-      args: { key: "todo" },
+    expect(routeRequest('storage_remove', { key: 'todo' })).toEqual({
+      command: 'widget_storage_remove',
+      args: { key: 'todo' },
     });
-    expect(routeRequest("storage_clear", undefined)).toEqual({
-      command: "widget_storage_clear",
+    expect(routeRequest('storage_clear', undefined)).toEqual({
+      command: 'widget_storage_clear',
       args: {},
     });
   });
 
-  it("rejects invalid storage parameters before invoking the host", () => {
-    expect(routeRequest("storage_get", { key: "" })).toEqual({
+  it('rejects invalid storage parameters before invoking the host', () => {
+    expect(routeRequest('storage_get', { key: '' })).toEqual({
       error: {
-        code: "invalid_params",
-        message: "storage key must be a non-empty string",
+        code: 'invalid_params',
+        message: 'storage key must be a non-empty string',
       },
     });
-    expect(routeRequest("storage_set", { key: "todo", value: 1 })).toEqual({
+    expect(routeRequest('storage_set', { key: 'todo', value: 1 })).toEqual({
       error: {
-        code: "invalid_params",
-        message: "storage value must be a string",
+        code: 'invalid_params',
+        message: 'storage value must be a string',
       },
     });
-    expect(routeRequest("camera", undefined)).toBeNull();
+    expect(routeRequest('camera', undefined)).toBeNull();
   });
 });
