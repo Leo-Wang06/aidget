@@ -1,6 +1,2 @@
-widgets/**/*.md text eol=lf
-widgets/**/*.html text eol=lf
-widgets/**/*.css text eol=lf
-widgets/**/*.js text eol=lf
-widgets/**/*.json text eol=lf
+* text=auto eol=lf
 widgets/**/*.png binary
