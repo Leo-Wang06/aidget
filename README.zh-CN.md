@@ -210,13 +210,13 @@ aidget community install @aidget-community/<id> --json
 }
 ```
 
-- `script`：脚本运行权限，未配置时 CSP 会阻止脚本、内联事件、嵌套网页、对象和 Worker，但 HTML、CSS 和静态资源仍可正常显示。启用后，小组件运行在没有同源权限的沙箱中，不能读取其他小组件文件、访问 Tauri IPC 或控制 aidget 主界面。
+- `script`：允许包内脚本及响应 HTML 中已有的内联 `<script>`，内联脚本通过内容哈希授权。禁止远程脚本、`eval`、`new Function`、内联事件属性和 `javascript:` URL；事件请使用 `addEventListener`。未声明时 CSP 会阻止组件脚本。组件始终运行在没有同源权限的沙箱中，不能读取其他组件文件或控制主界面。嵌套网页、对象和 Worker 始终被禁止。
 - `storage`：为小组件提供本地存储功能，存储空间上限为 256 KB，组件相互隔离。
 - `location`：为小组件提供通过请求操作系统定位服务的能力，适用于需要访问定位信息的场景。
 
 ## 网络权限
 
-在小组件的 `config.json` 中的 `network` 字段配置可访问的 HTTPS 域名，默认为空（即禁止访问网络）。
+在小组件的 `config.json` 中的 `network` 字段配置可访问的精确 HTTPS origin，默认为空（即禁止访问网络）。授权覆盖 API 请求、图片、样式、字体及媒体，不授予远程 JavaScript 执行权限。
 
 ```
 {

@@ -1,4 +1,4 @@
-// Native initialization script: content scripts never receive Tauri IPC.
+// Host-owned drag listener for sandboxed widget documents.
 (function () {
   if (!/^\/content\/[^/]+\/index\.html$/.test(location.pathname)) {
     return;

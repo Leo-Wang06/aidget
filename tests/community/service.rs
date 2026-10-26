@@ -197,6 +197,35 @@ fn installs_the_reviewed_npm_version_and_rejects_a_second_copy() {
         .iter()
         .any(|p| p.ends_with("index.json")));
 }
+
+#[test]
+fn official_versions_outside_the_current_review_are_rejected_before_npm() {
+    for listed in [false, true] {
+        let server = Server::new();
+        let (mut entry, _, _) = fixture(&server);
+        entry.package.version = "2.0.0".into();
+        server.put(
+            &format!("/{MAIN}/registry.json"),
+            200,
+            json!(Registry {
+                widgets: if listed { vec![entry] } else { vec![] }
+            }),
+        );
+        let (_root, store) = store();
+        let result = server.client().install(&store, &format!("{NAME}@1.0.0"));
+        assert!(
+            result.is_err(),
+            "an unreviewed official version was installed"
+        );
+        assert!(store.widget_ids().unwrap().is_empty());
+        assert!(server
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|path| { path == "/branches/main" || path == &format!("/{MAIN}/registry.json") }));
+    }
+}
 #[test]
 fn missing_npm_versions_and_temporary_errors_use_the_pinned_snapshot() {
     for status in [404, 429, 503] {

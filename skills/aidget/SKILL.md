@@ -90,10 +90,14 @@ conflicts, `current`.
   `backdrop-filter`, which can flash while dragging.
 - `permissions: ["script"]` enables JavaScript. Scripts run in an opaque
   sandbox without same-origin access; `style.css` and `assets/` still load.
+  Use package-local scripts or inline `<script>` blocks in the HTML; the host
+  hashes existing inline blocks. Remote scripts, `eval`, `new Function`, inline
+  event attributes and `javascript:` URLs are blocked. Use `addEventListener`.
   For asynchronous initialization, call `window.aidget.ready()` after the
   final DOM update. It is optional and idempotent.
-- Every external resource requires an exact HTTPS origin in `network`, e.g.
-  `["https://api.example.com"]`; an empty list blocks network access.
+- External data and static resources require an exact HTTPS origin in `network`, e.g.
+  `["https://api.example.com"]`; an empty list blocks network access. This grant
+  never permits remote JavaScript.
   CLI: `--network https://api.example.com`; use `none` to clear the list.
 - `dragMode` defaults to `"all"`: ordinary content drags after 4px while
   controls remain interactive. Use `"handle"` for the top 28px handle. Add

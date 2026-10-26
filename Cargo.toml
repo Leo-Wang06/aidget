@@ -104,6 +104,7 @@ objc2-web-kit = { version = "0.3", features = ["WKWebView", "WKSnapshotConfigura
 
 [dev-dependencies]
 tempfile = "3"
+tauri = { version = "2.12.5", features = ["test"] }
 
 [profile.release]
 codegen-units = 1

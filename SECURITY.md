@@ -16,7 +16,27 @@ widget iframe is sandboxed without same-origin access; it must not be able to
 read another widget's files, reach Tauri IPC, or control the aidget shell.
 
 The `network` list grants access to exact HTTPS origins. An empty list blocks
-remote network access; paths, wildcards and non-HTTPS origins are rejected.
+remote network access; paths, wildcards and non-HTTPS origins are rejected. Grants
+cover data and static resources, not remote JavaScript. Executable scripts must
+come from the widget directory or match hashes of inline blocks in the served
+HTML. Dynamic code evaluation, inline event attributes and `javascript:` URLs
+are blocked. Hashes are calculated at response time and do not authenticate a
+package publisher.
+
+Native command authorization uses the originating window label, and Tauri ACL
+separately grants commands to the main window or widget shells. Location and
+storage also check the widget's current declaration.
+
+On Windows, the current Wry dependency can expose Tauri initialization and
+`window.ipc` in subframes. This dependency issue is deferred; successful host
+command exploitation has not been verified. Window authorization and ACLs
+restrict command access but do not prevent the initialization exposure.
+
+Official-scope npm installations must match the current reviewed snapshot.
+Third-party npm packages remain installable without community review. Package
+digests ensure content integrity; the trust roots remain the community repository,
+npm and TLS. Network authorization covers an entire origin and does not prevent
+private-network destinations or DNS rebinding.
 
 ## In scope
 

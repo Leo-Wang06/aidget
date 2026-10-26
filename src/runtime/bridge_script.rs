@@ -3,8 +3,8 @@
 //! Installed in all frames because the widget document lives inside the
 //! shell's iframe; the script's own `/content/` guard keeps it out of the
 //! shell page and the main-window preview. Requests reach the shell through
-//! `postMessage` and are answered over Tauri IPC, so a widget never sees
-//! Tauri internals.
+//! `postMessage` and are answered by the shell over Tauri IPC. The Windows
+//! subframe-initialization limitation is documented in SECURITY.md.
 
 /// Injected with `initialization_script_for_all_frames`.
 pub const WIDGET_API: &str = include_str!("../../ui/src/widget/api.js");

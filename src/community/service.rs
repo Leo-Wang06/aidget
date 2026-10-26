@@ -246,11 +246,9 @@ impl Community {
                     Some((&main, entry)),
                 );
             }
-            if version.is_none() {
-                return Err(Error::NotFound(format!(
-                    "{name} is not listed on main; specify an exact historical version"
-                )));
-            }
+            return Err(Error::NotFound(format!(
+                "{spec} does not match the current reviewed community snapshot"
+            )));
         }
         let version = match version {
             Some(version) => version,

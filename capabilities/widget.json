@@ -1,0 +1,22 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "widget",
+  "description": "Widget shells may use their own lifecycle, drag and declared host APIs.",
+  "windows": ["widget-*"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-widget-state",
+    "allow-widget-loaded",
+    "allow-widget-ready",
+    "allow-persist-window-position",
+    "allow-begin-widget-drag",
+    "allow-start-widget-drag",
+    "allow-end-widget-drag",
+    "allow-widget-location",
+    "allow-widget-storage-get",
+    "allow-widget-storage-set",
+    "allow-widget-storage-remove",
+    "allow-widget-storage-clear"
+  ]
+}

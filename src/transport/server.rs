@@ -277,12 +277,23 @@ pub mod protocol {
         let Ok(meta) = store.load_meta(id) else {
             return not_found();
         };
-        response(
-            bytes,
-            content_type(name),
-            Some(&widget_csp_for(&meta.config, origin::origin())),
-            "no-store",
-        )
+        let html = if content_type(name).starts_with("text/html") {
+            Some(bytes.as_slice())
+        } else {
+            None
+        };
+        let csp = match crate::transport::csp::for_document(&meta.config, origin::origin(), html) {
+            Ok(csp) => csp,
+            Err(error) => {
+                return Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .header("Content-Type", "text/plain; charset=utf-8")
+                    .header("Content-Security-Policy", "default-src 'none'")
+                    .body(error.to_string().into_bytes())
+                    .expect("static error response")
+            }
+        };
+        response(bytes, content_type(name), Some(&csp), "no-store")
     }
 
     /// Restrict every resource type to this widget and its exact declared origins.
@@ -290,21 +301,10 @@ pub mod protocol {
         widget_csp_for(config, origin::origin())
     }
 
-    /// Parameterized origin permits testing the Windows and custom-scheme models.
+    /// Asset policy without inline-script grants; parameterized for platform origins.
     pub fn widget_csp_for(config: &crate::widgets::package::WidgetConfig, origin: &str) -> String {
-        let local = format!("{origin}/content/{}/", config.id);
-        let remote = config.network.join(" ");
-        let assets = format!("{local} {remote} data: blob:");
-        let scripts = if config
-            .permissions
-            .contains(&crate::widgets::model::WidgetPermission::Script)
-        {
-            format!("{local} {remote} 'unsafe-inline' 'unsafe-eval'")
-        } else {
-            "'none'".into()
-        };
-        let connect = if remote.is_empty() { "'none'" } else { &remote };
-        format!("default-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; script-src {scripts}; style-src {assets} 'unsafe-inline'; img-src {assets}; font-src {assets}; media-src {assets}; connect-src {connect}")
+        crate::transport::csp::for_document(config, origin, None)
+            .expect("a policy without document bytes cannot fail")
     }
 
     fn sanitize(relative: &str) -> Option<PathBuf> {
@@ -355,6 +355,7 @@ pub mod protocol {
             .status(StatusCode::OK)
             .header("Content-Type", mime)
             .header("Cache-Control", cache_control)
+            .header("X-Content-Type-Options", "nosniff")
             .header("Access-Control-Allow-Origin", "*");
         let builder = if let Some(csp) = csp {
             builder.header("Content-Security-Policy", csp)

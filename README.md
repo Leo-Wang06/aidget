@@ -210,13 +210,13 @@ Declare the permissions a widget needs in its `config.json` using `permissions`.
 }
 ```
 
-- `script`: allows scripts to run. Without it, CSP blocks scripts, inline event handlers, nested pages, objects, and workers, while HTML, CSS, and static assets still render. When enabled, widgets run in a sandbox without same-origin access. They cannot read other widgets' files, access Tauri IPC, or control the aidget main window.
+- `script`: allows package-local scripts and inline `<script>` blocks already present in the served HTML. Inline blocks are authorized by content hashes. Remote scripts, `eval`, `new Function`, inline event attributes and `javascript:` URLs are blocked; use `addEventListener` for events. Without this permission, CSP blocks widget scripts. Widgets remain in a sandbox without same-origin access and cannot read other widgets' files or control the main window. Nested pages, objects and workers are always blocked.
 - `storage`: provides local storage isolated per widget, with a 256 KB limit.
 - `location`: lets a widget request the operating system's location service when it needs location information.
 
 ## Network permissions
 
-Declare the exact HTTPS origins a widget can access in its `config.json` using `network`. The default empty list blocks network access.
+Declare the exact HTTPS origins a widget can access in its `config.json` using `network`. The default empty list blocks network access. Grants cover API requests, images, styles, fonts and media; they never authorize remote JavaScript.
 
 ```
 {

@@ -1,4 +1,7 @@
 pub mod bridge_script;
+pub mod command_access;
+pub mod command_names;
+pub mod commands;
 pub mod location;
 pub mod main_startup;
 pub mod main_window_state;

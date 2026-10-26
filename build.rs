@@ -1,5 +1,9 @@
 use std::process::Command;
 
+#[allow(dead_code)]
+#[path = "src/runtime/command_names.rs"]
+mod command_names;
+
 /// Cross-target type-check hook.
 ///
 /// `AIDGET_CHECK_TARGET=1` skips `tauri_build`, whose Windows resource step
@@ -37,5 +41,9 @@ fn main() {
         .status()
         .expect("failed to run `pnpm run build:ui` for the UI");
     assert!(status.success(), "pnpm run build:ui failed");
-    tauri_build::build()
+    tauri_build::try_build(
+        tauri_build::Attributes::new()
+            .app_manifest(tauri_build::AppManifest::new().commands(command_names::ALL_COMMANDS)),
+    )
+    .expect("cannot build application command permissions")
 }
