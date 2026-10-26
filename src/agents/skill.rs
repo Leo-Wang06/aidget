@@ -248,7 +248,7 @@ fn is_link(path: &Path, metadata: &fs::Metadata) -> Result<bool> {
     if metadata.file_type().is_symlink() {
         return Ok(true);
     }
-    Ok(junction::exists(path)?)
+    is_junction(path)
 }
 
 #[cfg(not(windows))]
@@ -271,7 +271,7 @@ fn link_points_to(path: &Path, source: &Path) -> Result<bool> {
 
 fn link_target(path: &Path) -> Result<PathBuf> {
     #[cfg(windows)]
-    if junction::exists(path)? {
+    if is_junction(path)? {
         return Ok(junction::get_target(path)?);
     }
     Ok(fs::read_link(path)?)
@@ -302,12 +302,21 @@ fn remove_link(path: &Path) -> Result<()> {
 
 #[cfg(windows)]
 fn remove_link(path: &Path) -> Result<()> {
-    if junction::exists(path)? {
+    if is_junction(path)? {
         junction::delete(path)?;
-    } else {
-        fs::remove_dir(path)?;
     }
+    fs::remove_dir(path)?;
     Ok(())
+}
+
+#[cfg(windows)]
+fn is_junction(path: &Path) -> Result<bool> {
+    const ERROR_NOT_A_REPARSE_POINT: i32 = 4390;
+    match junction::exists(path) {
+        Ok(is_junction) => Ok(is_junction),
+        Err(error) if error.raw_os_error() == Some(ERROR_NOT_A_REPARSE_POINT) => Ok(false),
+        Err(error) => Err(error.into()),
+    }
 }
 
 #[cfg(windows)]

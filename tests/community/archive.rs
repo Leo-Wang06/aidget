@@ -2,6 +2,12 @@ use aidget::community::archive::{extract, verify_integrity};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use sha2::{Digest, Sha512};
 use std::io::Write;
+fn set_raw_path(header: &mut tar::Header, path: &str) {
+    let name = &mut header.as_old_mut().name;
+    assert!(path.len() < name.len());
+    name[..path.len()].copy_from_slice(path.as_bytes());
+    name[path.len()] = 0;
+}
 fn pack(entries: &[(&str, &[u8], tar::EntryType)]) -> Vec<u8> {
     let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
     let mut builder = tar::Builder::new(encoder);
@@ -10,7 +16,7 @@ fn pack(entries: &[(&str, &[u8], tar::EntryType)]) -> Vec<u8> {
         header.set_size(bytes.len() as u64);
         header.set_mode(0o644);
         header.set_entry_type(*kind);
-        header.set_path(path).unwrap();
+        set_raw_path(&mut header, path);
         if kind.is_symlink() || kind.is_hard_link() {
             header.set_link_name("/tmp/escape").unwrap();
         }
