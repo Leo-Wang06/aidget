@@ -304,22 +304,21 @@ export function createCommunityPage(
     const images = document.createElement('div');
     images.className = 'community-detail-images';
     images.append(...config.screenshots.map((path) => screenshot(entry, path, commit)));
-    const actions = document.createElement('div');
-    actions.className = 'community-dialog-actions';
     const close = document.createElement('button');
     close.type = 'button';
-    close.className = 'secondary-button';
+    close.className = 'community-dialog-close';
     close.textContent = t('communityClose');
     close.addEventListener('click', () => dialog.close());
-    actions.append(close, installAction(entry, true, commit));
     const error = document.createElement('p');
     error.textContent = installError;
     error.className = 'community-install-error';
     error.setAttribute('role', 'alert');
+    const header = document.createElement('div');
+    header.className = 'community-dialog-header';
+    header.append(title, installAction(entry, true, commit));
     const content = document.createElement('div');
     content.className = 'community-dialog-content';
     content.append(
-      title,
       identity,
       images,
       description,
@@ -332,8 +331,8 @@ export function createCommunityPage(
     );
     const footer = document.createElement('div');
     footer.className = 'community-dialog-footer';
-    footer.append(error, actions);
-    dialog.replaceChildren(content, footer);
+    footer.append(error, close);
+    dialog.replaceChildren(header, content, footer);
   }
   function showDetails(entry: CommunityEntry) {
     installError = '';

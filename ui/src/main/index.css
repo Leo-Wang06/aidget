@@ -1181,7 +1181,7 @@ body[data-platform='windows'] .navigation {
 
 .community-heading,
 .community-card-footer,
-.community-dialog-actions {
+.community-dialog-header {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1354,14 +1354,36 @@ body[data-platform='windows'] .navigation {
 .community-dialog::backdrop {
   background: rgb(0 0 0 / 0.35);
 }
+.community-dialog-header {
+  min-inline-size: 0;
+  flex: none;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 20px 0 26px;
+}
+.community-dialog-header h2 {
+  min-inline-size: 0;
+  flex: 1;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.community-dialog-header .community-install {
+  min-height: 30px;
+  flex: none;
+  padding: 0 13px;
+}
 .community-dialog-content {
   min-block-size: 0;
   flex: 1 1 auto;
-  padding: 26px 20px 16px 26px;
+  padding: 0 20px 16px 26px;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-color: color-mix(in srgb, var(--text) 18%, transparent) transparent;
   scrollbar-width: thin;
+}
+.community-dialog-content > :first-child {
+  margin-block-start: 0;
 }
 .community-dialog-content::-webkit-scrollbar {
   width: 7px;
@@ -1385,11 +1407,8 @@ body[data-platform='windows'] .navigation {
   display: grid;
   flex: none;
   gap: 10px;
-  padding: 16px 26px 22px;
+  padding: 10px 26px 14px;
   background: var(--surface);
-}
-.community-dialog h2 {
-  margin-block-start: 0;
 }
 .community-dialog h3 {
   font-size: 14px;
@@ -1410,12 +1429,20 @@ body[data-platform='windows'] .navigation {
 .community-detail-images .community-preview {
   max-height: none;
 }
-.community-dialog-actions {
-  justify-content: flex-end;
-  margin-block-start: 0;
+.community-dialog-close {
+  min-height: 30px;
+  justify-self: end;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
 }
-.community-dialog-actions .community-install {
-  margin-inline-start: 0;
+.community-dialog-close:hover {
+  background: var(--nav-hover);
+  color: var(--text);
 }
 .community-install-error {
   margin: 0;

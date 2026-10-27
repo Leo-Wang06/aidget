@@ -123,7 +123,7 @@ describe('community cards', () => {
     await vi.waitFor(() => expect(installed).toHaveBeenCalled());
     expect(root.querySelector('.community-install')?.textContent).toBe('Installed');
   });
-  it('places the card heading first and pins platform-aware dialog actions below scrolling content', async () => {
+  it('pins install in the dialog header and close as a text action in the footer', async () => {
     const { root } = page();
     await vi.waitFor(() => expect(root.querySelector('.community-install')).toBeTruthy());
     const card = root.querySelector('article')!;
@@ -131,12 +131,18 @@ describe('community cards', () => {
 
     (root.querySelector('.community-install') as HTMLButtonElement).click();
     const dialog = root.querySelector('dialog')!;
+    const header = dialog.querySelector('.community-dialog-header')!;
     const content = dialog.querySelector('.community-dialog-content')!;
     const footer = dialog.querySelector('.community-dialog-footer')!;
-    expect(dialog.firstElementChild).toBe(content);
+    expect(dialog.firstElementChild).toBe(header);
     expect(dialog.lastElementChild).toBe(footer);
-    expect(content.querySelector('.community-dialog-actions')).toBeNull();
-    expect(footer.querySelector('.community-dialog-actions')).toBeTruthy();
+    expect(header.querySelector('h2')?.textContent).toBe('Clock');
+    expect(header.querySelector('.community-install')).toBeTruthy();
+    expect(content.querySelector('.community-install')).toBeNull();
+    expect(footer.querySelector('.community-install')).toBeNull();
+    const close = footer.querySelector<HTMLButtonElement>('.community-dialog-close')!;
+    expect(close.textContent).toBe('Close');
+    expect(close.classList.contains('secondary-button')).toBe(false);
     expect(
       [...dialog.querySelectorAll('.community-platforms li')].map((item) => item.textContent),
     ).toEqual(['macOS', 'Linux', 'Windows']);
@@ -147,10 +153,19 @@ describe('community cards', () => {
     await vi.waitFor(() => expect(root.querySelector('.community-install')).toBeTruthy());
     (root.querySelector('.community-install') as HTMLButtonElement).click();
     const dialog = root.querySelector('dialog')!;
-    const close = dialog.querySelector('.community-dialog-actions button');
+    const close = dialog.querySelector('.community-dialog-close');
     expect(dialog.tabIndex).toBe(-1);
     expect(document.activeElement).toBe(dialog);
     expect(document.activeElement).not.toBe(close);
+  });
+  it('closes the dialog from the footer text action', async () => {
+    const { root } = page();
+    await vi.waitFor(() => expect(root.querySelector('.community-install')).toBeTruthy());
+    (root.querySelector('.community-install') as HTMLButtonElement).click();
+    const dialog = root.querySelector('dialog')!;
+    expect(dialog.open).toBe(true);
+    (dialog.querySelector('.community-dialog-close') as HTMLButtonElement).click();
+    expect(dialog.open).toBe(false);
   });
   it('places the detail description after the screenshot gallery', async () => {
     const { root } = page();

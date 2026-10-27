@@ -635,7 +635,7 @@ function createView(widget: WidgetSummary): WidgetView {
     }),
   );
   archiveButton.addEventListener('click', () => void archiveWidget(view));
-  actions.append(toggle, archiveButton);
+  actions.append(archiveButton, toggle);
   info.append(copy, actions);
   root.append(stage, info);
 

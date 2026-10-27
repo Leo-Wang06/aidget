@@ -135,6 +135,35 @@ beforeEach(() => {
 });
 
 describe('main window navigation', () => {
+  it('places the archive action before the enabled switch on widget cards', async () => {
+    const initial = state('local-widgets');
+    initial.widgets = [
+      {
+        id: 'clock',
+        title: 'Clock',
+        packageName: null,
+        revision: 1,
+        token: 'token',
+        width: 360,
+        height: 220,
+        enabled: true,
+        createdAt: 1,
+      },
+    ];
+
+    await loadMain(initial);
+    const actions = await vi.waitFor(() => {
+      const value = document.querySelector<HTMLElement>('[data-widget="clock"] .widget-actions');
+      expect(value).toBeTruthy();
+      return value!;
+    });
+
+    expect([...actions.querySelectorAll('button')].map((button) => button.className)).toEqual([
+      'widget-icon-button archive-button',
+      'switch',
+    ]);
+  });
+
   it('saves a GitHub token once and only renders its prefix and suffix', async () => {
     const initial = state('general');
     let saved: string | null | undefined;
