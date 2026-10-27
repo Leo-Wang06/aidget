@@ -397,8 +397,13 @@ fn sync_widgets_inner(app: &AppHandle) -> Result<()> {
             // Keep an already visible widget untouched: `show()` re-orders the
             // window as key, which makes macOS re-evaluate transparency while
             // the user is dragging.
-            if !window.is_visible().unwrap_or(false) {
-                let _ = window.show();
+            if !window.is_visible()? {
+                #[cfg(windows)]
+                if !windows.contains_key(&id) {
+                    crate::common::utils::reveal_window_at_bottom(window.hwnd()?)?;
+                }
+                #[cfg(not(windows))]
+                window.show()?;
             }
             let changed = signatures.get(&id) != Some(&signature);
             if changed {
@@ -656,7 +661,7 @@ fn build_window(
     let (x, y, scale) = physical_geometry(app, frame);
     // The page reads its state from `widget_state`, never from the URL.
     let url = origin::widget_window_url();
-    let window = WebviewWindowBuilder::new(
+    let builder = WebviewWindowBuilder::new(
         app,
         label(id),
         WebviewUrl::External(
@@ -681,8 +686,19 @@ fn build_window(
     .always_on_bottom(true)
     .skip_taskbar(true)
     .visible_on_all_workspaces(true)
-    .accept_first_mouse(true)
-    .build()?;
+    .accept_first_mouse(true);
+
+    // Avoid the redirection bitmap's stale transparent-window surface on
+    // Windows, and wait for the document before revealing the window.
+    #[cfg(windows)]
+    let builder = builder.visible(false).no_redirection_bitmap(true);
+    let window = builder.build()?;
+
+    // A hidden WebView2 window keeps the native title bar from creation.
+    // Remove the frame before the first reveal while Tauri still considers the
+    // window undecorated.
+    #[cfg(windows)]
+    crate::common::utils::remove_window_decorations(window.hwnd()?)?;
 
     #[cfg(target_os = "macos")]
     native_surface::apply(&window, state.surface)?;
@@ -1301,6 +1317,8 @@ async fn wait_ready(app: &AppHandle, id: &str, revision: u64, timeout: Duration)
 }
 
 /// Called by the widget page once its iframe finishes loading `revision`.
+/// Windows keeps new widget windows hidden until now so the first visible frame
+/// already contains the document.
 pub fn mark_loaded(app: &AppHandle, window: &WebviewWindow, revision: u64) -> Result<()> {
     let id = window
         .label()
@@ -1312,6 +1330,10 @@ pub fn mark_loaded(app: &AppHandle, window: &WebviewWindow, revision: u64) -> Re
         &id,
         revision,
     );
+    #[cfg(windows)]
+    if !window.is_visible()? {
+        crate::common::utils::reveal_window_at_bottom(window.hwnd()?)?;
+    }
     Ok(())
 }
 

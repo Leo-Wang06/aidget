@@ -53,3 +53,146 @@ fn atomic_write_replaces_and_leaves_no_temp_files() {
         .collect();
     assert!(leftovers.is_empty());
 }
+
+#[cfg(windows)]
+struct TestWindow(windows::Win32::Foundation::HWND);
+
+#[cfg(windows)]
+impl Drop for TestWindow {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = windows::Win32::UI::WindowsAndMessaging::DestroyWindow(self.0);
+        }
+    }
+}
+
+#[cfg(windows)]
+fn create_test_window(title: windows::core::PCWSTR) -> TestWindow {
+    use windows::core::w;
+    use windows::Win32::UI::WindowsAndMessaging::{CreateWindowExW, WINDOW_EX_STYLE, WS_POPUP};
+
+    let hwnd = unsafe {
+        CreateWindowExW(
+            WINDOW_EX_STYLE::default(),
+            w!("STATIC"),
+            title,
+            WS_POPUP,
+            0,
+            0,
+            1,
+            1,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap()
+    };
+    TestWindow(hwnd)
+}
+
+#[cfg(windows)]
+fn create_decorated_test_window(title: windows::core::PCWSTR) -> TestWindow {
+    use windows::core::w;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CreateWindowExW, WINDOW_EX_STYLE, WS_OVERLAPPEDWINDOW,
+    };
+
+    let hwnd = unsafe {
+        CreateWindowExW(
+            WINDOW_EX_STYLE::default(),
+            w!("STATIC"),
+            title,
+            WS_OVERLAPPEDWINDOW,
+            0,
+            0,
+            360,
+            220,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap()
+    };
+    TestWindow(hwnd)
+}
+
+#[cfg(windows)]
+fn window_is_above(
+    upper: windows::Win32::Foundation::HWND,
+    lower: windows::Win32::Foundation::HWND,
+) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::{GetWindow, GW_HWNDNEXT};
+
+    let mut current = unsafe { GetWindow(upper, GW_HWNDNEXT).ok() };
+    while let Some(window) = current {
+        if window == lower {
+            return true;
+        }
+        current = unsafe { GetWindow(window, GW_HWNDNEXT).ok() };
+    }
+    false
+}
+
+#[cfg(windows)]
+#[test]
+fn reveal_window_at_bottom_shows_it_below_its_peer() {
+    use aidget::common::utils::reveal_window_at_bottom;
+    use windows::core::w;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        IsWindowVisible, SetWindowPos, ShowWindow, HWND_TOP, SWP_NOACTIVATE, SWP_NOMOVE,
+        SWP_NOSIZE, SW_SHOWNOACTIVATE,
+    };
+
+    let lower = create_test_window(w!("aidget-lower"));
+    let peer = create_test_window(w!("aidget-peer"));
+
+    unsafe {
+        let _ = ShowWindow(peer.0, SW_SHOWNOACTIVATE);
+        SetWindowPos(
+            lower.0,
+            Some(HWND_TOP),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        )
+        .unwrap();
+    }
+    assert!(window_is_above(lower.0, peer.0));
+
+    reveal_window_at_bottom(lower.0).unwrap();
+
+    assert!(unsafe { IsWindowVisible(lower.0).as_bool() });
+    assert!(window_is_above(peer.0, lower.0));
+}
+
+#[cfg(windows)]
+#[test]
+fn remove_window_decorations_makes_the_client_fill_the_window() {
+    use aidget::common::utils::remove_window_decorations;
+    use windows::core::w;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetClientRect, GetWindowLongPtrW, GetWindowRect, GWL_STYLE, WS_CAPTION, WS_THICKFRAME,
+    };
+
+    let window = create_decorated_test_window(w!("aidget-decorated"));
+    let style = unsafe { GetWindowLongPtrW(window.0, GWL_STYLE) };
+    assert_ne!(style & WS_CAPTION.0 as isize, 0);
+
+    remove_window_decorations(window.0).unwrap();
+
+    let style = unsafe { GetWindowLongPtrW(window.0, GWL_STYLE) };
+    assert_eq!(style & WS_CAPTION.0 as isize, 0);
+    assert_eq!(style & WS_THICKFRAME.0 as isize, 0);
+    let mut outer = windows::Win32::Foundation::RECT::default();
+    let mut client = windows::Win32::Foundation::RECT::default();
+    unsafe {
+        GetWindowRect(window.0, &mut outer).unwrap();
+        GetClientRect(window.0, &mut client).unwrap();
+    }
+    assert_eq!(outer.right - outer.left, client.right - client.left);
+    assert_eq!(outer.bottom - outer.top, client.bottom - client.top);
+}

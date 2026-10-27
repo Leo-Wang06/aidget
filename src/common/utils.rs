@@ -55,3 +55,55 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
         .map(|byte| format!("{byte:02x}"))
         .collect()
 }
+
+/// Show a native top-level window at the bottom of the z-order without moving,
+/// resizing, or focusing it.
+#[cfg(windows)]
+pub fn reveal_window_at_bottom(hwnd: windows::Win32::Foundation::HWND) -> Result<()> {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, HWND_BOTTOM, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW,
+    };
+
+    unsafe {
+        SetWindowPos(
+            hwnd,
+            Some(HWND_BOTTOM),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+        )
+        .map_err(|error| Error::Other(format!("cannot reveal window: {error}")))
+    }
+}
+
+/// Remove the native caption and resize frame from a top-level window.
+#[cfg(windows)]
+pub fn remove_window_decorations(hwnd: windows::Win32::Foundation::HWND) -> Result<()> {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_STYLE, SWP_FRAMECHANGED,
+        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WS_CAPTION, WS_THICKFRAME,
+    };
+
+    let decorations = (WS_CAPTION.0 | WS_THICKFRAME.0) as isize;
+    let style = unsafe { GetWindowLongPtrW(hwnd, GWL_STYLE) };
+    unsafe {
+        SetWindowLongPtrW(hwnd, GWL_STYLE, style & !decorations);
+    }
+    if unsafe { GetWindowLongPtrW(hwnd, GWL_STYLE) } & decorations != 0 {
+        return Err(Error::Other("cannot remove window decorations".to_string()));
+    }
+    unsafe {
+        SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+        )
+        .map_err(|error| Error::Other(format!("cannot refresh window frame: {error}")))
+    }
+}
