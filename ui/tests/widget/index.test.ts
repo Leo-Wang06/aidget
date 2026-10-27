@@ -14,12 +14,14 @@ const shellHtml = widgetHtml
   .replace('    <script type="module" src="./src/widget/index.ts"></script>\n', '');
 
 describe('widget window shell', () => {
-  it('hides the fault layer before widget state loads', () => {
+  it('hides fallback surfaces and faults before widget state loads', () => {
     const page = new DOMParser().parseFromString(shellHtml, 'text/html');
     const chrome = page.querySelector<HTMLElement>('.widget-chrome');
+    const surface = page.querySelector<HTMLElement>('.host-surface');
     const fault = page.querySelector<HTMLElement>('.fault');
 
     expect(chrome?.dataset.state).toBe('loading');
+    expect(surface?.hidden).toBe(true);
     expect(fault?.hidden).toBe(true);
   });
 });

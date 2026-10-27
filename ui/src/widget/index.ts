@@ -26,6 +26,7 @@ import {
 
 const chrome = document.querySelector<HTMLElement>('.widget-chrome')!;
 const frame = document.querySelector<HTMLIFrameElement>('iframe.widget')!;
+const hostSurface = document.querySelector<HTMLElement>('.host-surface')!;
 const fault = document.querySelector<HTMLElement>('.fault')!;
 const faultMessage = document.querySelector<HTMLElement>('[data-fault-message]')!;
 const handle = document.querySelector<HTMLElement>('[data-drag-handle]')!;
@@ -72,6 +73,7 @@ function apply(next: WidgetState) {
     frame.src = widgetUrl(origin, next.id, next.revision, next.token);
   }
   document.title = next.title || 'aidget';
+  hostSurface.hidden = !next.hostSurface;
   chrome.dataset.surface = next.hostSurface ? 'host' : 'none';
   chrome.dataset.state = 'ready';
   fault.hidden = true;
@@ -96,6 +98,7 @@ function postDragConfig() {
 
 function showFault(message: string) {
   chrome.dataset.state = 'fault';
+  hostSurface.hidden = false;
   faultMessage.textContent = message;
   fault.hidden = false;
 }

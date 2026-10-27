@@ -62,6 +62,7 @@ interface WidgetView {
   toggle: HTMLButtonElement;
   archiveButton: HTMLButtonElement;
   widget: WidgetSummary;
+  previewRequest: number;
 }
 
 interface DeletedWidgetView {
@@ -639,7 +640,17 @@ function createView(widget: WidgetSummary): WidgetView {
   info.append(copy, actions);
   root.append(stage, info);
 
-  const view = { root, image, placeholder, title, size, toggle, archiveButton, widget };
+  const view = {
+    root,
+    image,
+    placeholder,
+    title,
+    size,
+    toggle,
+    archiveButton,
+    widget,
+    previewRequest: 0,
+  };
   updateView(view, widget);
   return view;
 }
@@ -794,10 +805,15 @@ async function loadDeletedPreview(view: DeletedWidgetView, widget: DeletedWidget
 }
 
 async function loadPreview(view: WidgetView, widget: WidgetSummary) {
+  const request = ++view.previewRequest;
   const key = previewKey(widget);
   try {
     const preview = await invoke<string | null>('main_widget_preview', { id: widget.id });
-    if (view.widget.id !== widget.id || previewKey(view.widget) !== key) {
+    if (
+      request !== view.previewRequest ||
+      view.widget.id !== widget.id ||
+      previewKey(view.widget) !== key
+    ) {
       return;
     }
     view.image.hidden = preview === null;
@@ -806,17 +822,25 @@ async function loadPreview(view: WidgetView, widget: WidgetSummary) {
       view.image.src = preview;
     }
   } catch (error) {
+    if (request !== view.previewRequest || views.get(widget.id) !== view || !view.widget.enabled) {
+      return;
+    }
     showFault(`${t('previewUnavailable')}: ${widget.title || widget.id} (${String(error)})`);
   }
 }
 
 async function loadCachedPreview(view: WidgetView, widget: WidgetSummary) {
+  const request = ++view.previewRequest;
   const key = previewKey(widget);
   try {
     const preview = await invoke<string | null>('main_widget_cached_preview', {
       id: widget.id,
     });
-    if (view.widget.id !== widget.id || previewKey(view.widget) !== key) {
+    if (
+      request !== view.previewRequest ||
+      view.widget.id !== widget.id ||
+      previewKey(view.widget) !== key
+    ) {
       return;
     }
     view.image.hidden = preview === null;
@@ -825,6 +849,9 @@ async function loadCachedPreview(view: WidgetView, widget: WidgetSummary) {
       view.image.src = preview;
     }
   } catch (error) {
+    if (request !== view.previewRequest || views.get(widget.id) !== view) {
+      return;
+    }
     showFault(`${t('previewUnavailable')}: ${widget.title || widget.id} (${String(error)})`);
   }
 }

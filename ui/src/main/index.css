@@ -1357,16 +1357,17 @@ body[data-platform='windows'] .navigation {
 .community-dialog-header {
   min-inline-size: 0;
   flex: none;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 20px;
-  padding: 22px 20px 0 26px;
+  padding: 22px 20px 6px 26px;
 }
 .community-dialog-header h2 {
   min-inline-size: 0;
   flex: 1;
   margin: 0;
   overflow-wrap: anywhere;
+  text-box: trim-both cap alphabetic;
 }
 .community-dialog-header .community-install {
   min-height: 30px;

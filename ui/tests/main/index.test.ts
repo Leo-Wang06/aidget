@@ -164,6 +164,56 @@ describe('main window navigation', () => {
     ]);
   });
 
+  it('ignores stale preview failures while the widget is toggled', async () => {
+    const initial = state('local-widgets');
+    initial.widgets = [
+      {
+        id: 'ace-of-hearts',
+        title: 'Ace of Hearts',
+        packageName: null,
+        revision: 1,
+        token: 'token',
+        width: 220,
+        height: 330,
+        enabled: true,
+        createdAt: 1,
+      },
+    ];
+    const rejectPreviews: ((reason?: unknown) => void)[] = [];
+    mocks.invoke.mockImplementation((command: string) => {
+      if (command === 'main_state') {
+        return Promise.resolve(initial);
+      }
+      if (command === 'main_painted') {
+        return Promise.resolve(false);
+      }
+      if (command === 'main_widget_cached_preview') {
+        return Promise.resolve(null);
+      }
+      if (command === 'main_widget_preview') {
+        return new Promise((_resolve, reject) => {
+          rejectPreviews.push(reject);
+        });
+      }
+      return Promise.resolve();
+    });
+
+    await import('../../src/main');
+    await vi.waitFor(() => expect(rejectPreviews).toHaveLength(1));
+    const disabled = structuredClone(initial);
+    disabled.widgets[0].enabled = false;
+    const onState = mocks.listen.mock.calls.find(([name]) => name === 'aidget://main')![1];
+    onState({ event: 'aidget://main', id: 0, payload: disabled });
+    onState({ event: 'aidget://main', id: 0, payload: initial });
+    await vi.waitFor(() => expect(rejectPreviews).toHaveLength(2));
+    rejectPreviews[0](new Error('widget not found: ace-of-hearts'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const fault = document.querySelector<HTMLElement>('[data-fault]')!;
+    expect(fault.hidden).toBe(true);
+    expect(fault.textContent).not.toContain('widget not found');
+  });
+
   it('saves a GitHub token once and only renders its prefix and suffix', async () => {
     const initial = state('general');
     let saved: string | null | undefined;
