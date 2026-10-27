@@ -117,8 +117,11 @@ fn main_state(app: tauri::AppHandle) -> std::result::Result<ui::MainState, Strin
 }
 
 /// Start desktop widget windows after the main page has painted its first frame.
+///
+/// Run outside the WebView IPC callback so scheduling window creation on the
+/// main thread cannot reenter WebView2 while processing that callback.
 #[tauri::command]
-fn main_painted(
+async fn main_painted(
     window: tauri::WebviewWindow,
     app: tauri::AppHandle,
 ) -> std::result::Result<bool, String> {
@@ -181,8 +184,9 @@ async fn set_github_token(
         .map_err(|error| error.to_string())
 }
 
+// Widget mutations schedule window creation and must also leave the IPC callback.
 #[tauri::command]
-fn set_widget_enabled(
+async fn set_widget_enabled(
     app: tauri::AppHandle,
     id: String,
     enabled: bool,
@@ -191,12 +195,15 @@ fn set_widget_enabled(
 }
 
 #[tauri::command]
-fn delete_widget(app: tauri::AppHandle, id: String) -> std::result::Result<(), String> {
+async fn delete_widget(app: tauri::AppHandle, id: String) -> std::result::Result<(), String> {
     ui::delete_widget(&app, &id).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-fn restore_widget(app: tauri::AppHandle, trash_name: String) -> std::result::Result<(), String> {
+async fn restore_widget(
+    app: tauri::AppHandle,
+    trash_name: String,
+) -> std::result::Result<(), String> {
     ui::restore_widget(&app, &trash_name).map_err(|error| error.to_string())
 }
 
@@ -209,7 +216,7 @@ fn deleted_widget_preview(
 }
 
 #[tauri::command]
-fn purge_deleted_widget(
+async fn purge_deleted_widget(
     app: tauri::AppHandle,
     trash_name: String,
 ) -> std::result::Result<(), String> {
