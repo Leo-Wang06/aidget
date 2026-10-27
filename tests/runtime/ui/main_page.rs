@@ -1,42 +1,15 @@
-use std::collections::{HashMap, HashSet};
-
 use aidget::runtime::main_window_state;
 use aidget::runtime::ui::{
-    cached_preview, content_token, html_widget_surface, is_relevant, main_widgets, place_frame,
-    record_revision, require_main_window_label, retain_widget_revisions, screenshot_mode,
-    set_github_token as change_github_token, GithubTokenSummary, MainState, ScreenshotMode,
-    WidgetSummary,
+    cached_preview, main_widgets, set_github_token as change_github_token, GithubTokenSummary,
+    MainState, WidgetSummary,
 };
 use aidget::settings::{
     save_github_token, save_preferences, GithubToken, Language, MainPage, Theme, TrayClickAction,
     UiPreferences,
 };
-use aidget::widgets::model::{DeletedWidgetSummary, WidgetFrame, WidgetSurface};
+use aidget::widgets::model::{DeletedWidgetSummary, WidgetFrame};
 use aidget::widgets::store::{Store, WidgetEdit, CONFIG_FILE};
 use tempfile::TempDir;
-
-#[test]
-fn content_token_tracks_signature_changes() {
-    assert_ne!(content_token("1:100"), content_token("1:101"));
-    assert_eq!(content_token("1:100"), content_token("1:100"));
-}
-
-#[test]
-fn ignores_state_and_run_events() {
-    use notify::event::{AccessKind, AccessMode, CreateKind, Event, EventKind};
-    let state = Event::new(EventKind::Create(CreateKind::File)).add_path(std::path::PathBuf::from(
-        "/tmp/aidget/state/screenshots/a.png",
-    ));
-    assert!(!is_relevant(&Ok(state)));
-
-    let widget = Event::new(EventKind::Create(CreateKind::File))
-        .add_path(std::path::PathBuf::from("/tmp/aidget/widgets/a/index.html"));
-    assert!(is_relevant(&Ok(widget)));
-
-    let access = Event::new(EventKind::Access(AccessKind::Close(AccessMode::Read)))
-        .add_path(std::path::PathBuf::from("/tmp/aidget/widgets/a/index.html"));
-    assert!(!is_relevant(&Ok(access)));
-}
 
 #[test]
 fn main_window_lists_all_widgets_and_marks_enabled_state() {
@@ -196,90 +169,6 @@ fn main_window_skips_widgets_with_broken_config() {
 }
 
 #[test]
-fn cross_display_frame_is_not_pulled_back() {
-    let frame = WidgetFrame {
-        display: "primary".to_string(),
-        x: 0.0,
-        y: -100.0,
-        w: 360.0,
-        h: 220.0,
-    };
-    let (x, y) = place_frame(&frame, (0, 0), (3024, 1786), 2.0, true);
-    assert_eq!((x, y), (0, -200));
-}
-
-#[test]
-fn negative_offsets_are_kept_on_a_live_display() {
-    let frame = WidgetFrame {
-        display: "primary".to_string(),
-        x: -1200.0,
-        y: -3000.0,
-        w: 360.0,
-        h: 220.0,
-    };
-    let (x, y) = place_frame(&frame, (0, 0), (3024, 1786), 2.0, true);
-    assert_eq!((x, y), (-2400, -6000));
-}
-
-#[test]
-fn missing_display_frame_is_clamped_into_fallback() {
-    let frame = WidgetFrame {
-        display: "Monitor #999".to_string(),
-        x: 5000.0,
-        y: 80.0,
-        w: 360.0,
-        h: 220.0,
-    };
-    let (x, y) = place_frame(&frame, (0, 0), (3024, 1786), 2.0, false);
-    assert_eq!((x, y), ((3024.0 - 720.0) as i32, 160));
-}
-
-#[test]
-fn widget_declares_its_card_surface() {
-    assert_eq!(
-        html_widget_surface(r#"<head><meta name="aidget-surface" content="none" /></head>"#),
-        WidgetSurface::None
-    );
-    assert_eq!(
-        html_widget_surface(r#"<HEAD><META CONTENT="none" NAME="aidget-surface"></HEAD>"#),
-        WidgetSurface::None
-    );
-    assert_eq!(
-        html_widget_surface(r#"<head><meta name="aidget-surface" content="glass" /></head>"#),
-        WidgetSurface::Glass
-    );
-    assert_eq!(
-        html_widget_surface(r#"<meta name="aidget-surface" content="host" />"#),
-        WidgetSurface::Host
-    );
-    assert_eq!(
-        html_widget_surface("<head><title>plain</title></head>"),
-        WidgetSurface::Host
-    );
-}
-
-#[test]
-fn stale_revisions_are_removed_after_a_widget_is_archived() {
-    let mut loaded = HashMap::from([("weather".to_string(), 3)]);
-    let mut ready = HashMap::from([("weather".to_string(), 3)]);
-
-    retain_widget_revisions(&mut loaded, &mut ready, &HashSet::new());
-
-    assert!(!loaded.contains_key("weather"));
-    assert!(!ready.contains_key("weather"));
-}
-
-#[test]
-fn revision_receipts_never_move_backwards() {
-    let mut ready = HashMap::new();
-    record_revision(&mut ready, "weather", 3);
-    record_revision(&mut ready, "weather", 5);
-    record_revision(&mut ready, "weather", 4);
-
-    assert_eq!(ready["weather"], 5);
-}
-
-#[test]
 fn main_state_exposes_widget_metadata_in_camel_case() {
     let value = serde_json::to_value(MainState {
         widgets: vec![WidgetSummary {
@@ -392,25 +281,6 @@ fn cached_preview_rejects_unknown_and_invalid_widgets() {
 
     assert!(cached_preview(&store, "missing").is_err());
     assert!(cached_preview(&store, "../outside").is_err());
-}
-
-#[test]
-fn panel_previews_do_not_request_viewport_scaling() {
-    assert_eq!(screenshot_mode(true, 2.0), ScreenshotMode::PanelPreview);
-}
-
-#[test]
-fn explicit_screenshots_keep_the_requested_scale() {
-    assert_eq!(
-        screenshot_mode(false, 3.0),
-        ScreenshotMode::ViewportScaled(3.0)
-    );
-}
-
-#[test]
-fn main_only_commands_reject_widget_windows() {
-    assert!(require_main_window_label("main").is_ok());
-    assert!(require_main_window_label("widget-weather").is_err());
 }
 
 #[test]

@@ -1,0 +1,171 @@
+//! Main webview window lifecycle and main-page events.
+#[cfg(target_os = "macos")]
+use objc2_app_kit::NSWindow;
+use tauri::{
+    webview::PageLoadEvent, AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder, WindowEvent,
+};
+
+use crate::common::error::{Error, Result};
+use crate::transport::origin;
+
+use super::main_page::main_payload;
+use super::state::{require_main_window_label, UiState, MAIN_LABEL};
+
+#[cfg(not(target_os = "macos"))]
+const MAIN_STARTUP_POSITION: f64 = -10_000.0;
+
+/// Queue creation or focus of the main window on the Tauri main thread.
+pub fn show_main(app: &AppHandle) -> Result<()> {
+    // The bridge calls this from a worker thread; window creation must run on
+    // the main thread. Queue it instead of blocking the request.
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        if let Err(error) = show_main_now(&handle) {
+            eprintln!("aidget: cannot open the main window: {error}");
+        }
+    })
+    .map_err(|error| Error::Other(error.to_string()))?;
+    Ok(())
+}
+
+/// Show the main window. Must be called on the main thread.
+pub fn show_main_now(app: &AppHandle) -> Result<()> {
+    if let Some(window) = app.get_webview_window(MAIN_LABEL) {
+        if app.state::<UiState>().startup.is_revealed() {
+            reveal_main(app, &window);
+        }
+        return Ok(());
+    }
+
+    app.state::<UiState>().startup.reset_reveal();
+    let handle_for_load = app.clone();
+    let builder = WebviewWindowBuilder::new(
+        app,
+        MAIN_LABEL,
+        WebviewUrl::External(
+            origin::main_window_url()
+                .parse()
+                .map_err(|error| Error::Other(format!("invalid main url: {error}")))?,
+        ),
+    )
+    .title("aidget")
+    .inner_size(1080.0, 720.0)
+    .min_inner_size(860.0, 560.0)
+    .center()
+    .visible(false)
+    .focused(false)
+    .on_page_load(move |window, payload| {
+        if matches!(payload.event(), PageLoadEvent::Finished) {
+            handle_for_load
+                .state::<UiState>()
+                .startup
+                .mark_page_loaded();
+            if let Err(error) = prime_main(&window) {
+                eprintln!("aidget: cannot prime the main window: {error}");
+            }
+            reveal_main_if_ready(&handle_for_load, &window);
+        }
+    });
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .traffic_light_position(tauri::LogicalPosition::new(24.0, 26.0))
+        .hidden_title(true);
+    #[cfg(target_os = "linux")]
+    let builder = builder.decorations(false);
+    let window = builder.build()?;
+    prepare_main(&window)?;
+
+    let handle = app.clone();
+    window.on_window_event(move |event| {
+        if let WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            if let Some(window) = handle.get_webview_window(MAIN_LABEL) {
+                hide_main(&handle, &window);
+            }
+        }
+    });
+    Ok(())
+}
+
+fn reveal_main(app: &AppHandle, window: &WebviewWindow) {
+    // Widget-only starts stay out of the Dock; opening the main window makes
+    // aidget behave like a regular app so the window can take focus.
+    #[cfg(target_os = "macos")]
+    let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+    let _ = window.set_ignore_cursor_events(false);
+    let _ = window.show();
+    let _ = window.unminimize();
+    let _ = window.set_focus();
+    emit_main(app);
+}
+
+#[cfg(target_os = "macos")]
+fn set_main_alpha(window: &WebviewWindow, alpha: f64) -> Result<()> {
+    window
+        .with_webview(move |webview| unsafe {
+            let window: &NSWindow = &*webview.ns_window().cast();
+            window.setAlphaValue(alpha);
+        })
+        .map_err(|error| Error::Other(format!("cannot set main window opacity: {error}")))
+}
+
+fn prepare_main(window: &WebviewWindow) -> Result<()> {
+    // A hidden WebView does not run animation frames. Prime it without visible
+    // content: transparent in place on macOS, offscreen where opacity is absent.
+    window
+        .set_ignore_cursor_events(true)
+        .map_err(|error| Error::Other(format!("cannot ignore main window cursor: {error}")))?;
+    #[cfg(target_os = "macos")]
+    set_main_alpha(window, 0.0)?;
+    #[cfg(not(target_os = "macos"))]
+    window
+        .set_position(tauri::LogicalPosition::new(
+            MAIN_STARTUP_POSITION,
+            MAIN_STARTUP_POSITION,
+        ))
+        .map_err(|error| Error::Other(format!("cannot stage main window: {error}")))?;
+    Ok(())
+}
+
+fn prime_main(window: &WebviewWindow) -> Result<()> {
+    window
+        .show()
+        .map_err(|error| Error::Other(format!("cannot prime main window: {error}")))
+}
+
+fn reveal_main_if_ready(app: &AppHandle, window: &WebviewWindow) {
+    if app.state::<UiState>().startup.claim_ready_reveal() {
+        #[cfg(target_os = "macos")]
+        let _ = set_main_alpha(window, 1.0);
+        #[cfg(not(target_os = "macos"))]
+        let _ = window.center();
+        reveal_main(app, window);
+    }
+}
+
+/// Reveal the main window only after the page has loaded and painted its first frame.
+pub fn mark_main_painted(app: &AppHandle, window: &WebviewWindow) -> Result<()> {
+    require_main_window_label(window.label())?;
+    app.state::<UiState>().startup.mark_main_painted();
+    reveal_main_if_ready(app, window);
+    Ok(())
+}
+
+fn hide_main(app: &AppHandle, window: &WebviewWindow) {
+    let _ = window.hide();
+    #[cfg(target_os = "macos")]
+    let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+    #[cfg(not(target_os = "macos"))]
+    let _ = app;
+}
+
+pub(super) fn emit_main(app: &AppHandle) {
+    if app.get_webview_window(MAIN_LABEL).is_none() {
+        return;
+    }
+    if let Ok(state) = main_payload(app) {
+        let _ = app.emit_to(MAIN_LABEL, "aidget://main", &state);
+    }
+}
