@@ -28,6 +28,24 @@ const MAIN_PREVIEW_SCALE: f64 = 2.0;
 #[cfg(not(target_os = "macos"))]
 const MAIN_STARTUP_POSITION: f64 = -10_000.0;
 
+/// Capture strategy for a native WebView snapshot.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ScreenshotMode {
+    /// Capture the viewport without changing it; used by the local widget panel.
+    PanelPreview,
+    /// Capture at an explicit number of output pixels per layout point.
+    ViewportScaled(f64),
+}
+
+/// Select a snapshot strategy that preserves the requested output scale.
+pub fn screenshot_mode(preview: bool, scale: f64) -> ScreenshotMode {
+    if preview {
+        ScreenshotMode::PanelPreview
+    } else {
+        ScreenshotMode::ViewportScaled(scale)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WidgetState {
@@ -596,7 +614,8 @@ pub async fn main_widget_preview(app: &AppHandle, id: &str) -> Result<Option<Str
     let board = store.load_board()?;
     let archived = main_window_state::archived_widgets(store.root(), &store.widget_ids()?)?;
     let png = if board.widgets.contains_key(id) && !archived.contains(id) {
-        let png = screenshot(app, id, MAIN_PREVIEW_SCALE).await?;
+        let mode = screenshot_mode(true, MAIN_PREVIEW_SCALE);
+        let png = capture_widget(app, id, mode).await?;
         main_window_state::save_preview(store.root(), id, &png)?;
         png
     } else {
@@ -1171,6 +1190,14 @@ pub fn record_revision(revisions: &mut HashMap<String, u64>, id: &str, revision:
 }
 
 pub async fn screenshot(app: &AppHandle, id: &str, scale: f64) -> Result<Vec<u8>> {
+    capture_widget(app, id, screenshot_mode(false, scale)).await
+}
+
+async fn capture_widget(app: &AppHandle, id: &str, mode: ScreenshotMode) -> Result<Vec<u8>> {
+    let scale = match mode {
+        ScreenshotMode::PanelPreview => MAIN_PREVIEW_SCALE,
+        ScreenshotMode::ViewportScaled(scale) => scale,
+    };
     let expected = Store::new(app.state::<UiState>().root.lock().unwrap().clone())
         .load_meta(id)?
         .revision;
@@ -1206,7 +1233,12 @@ pub async fn screenshot(app: &AppHandle, id: &str, scale: f64) -> Result<Vec<u8>
             }
             #[cfg(windows)]
             unsafe {
-                capture_webview2(platform, sender, scale, viewport);
+                match mode {
+                    ScreenshotMode::PanelPreview => capture_webview2_preview(platform, sender),
+                    ScreenshotMode::ViewportScaled(_) => {
+                        capture_webview2(platform, sender, scale, viewport)
+                    }
+                }
             }
             #[cfg(target_os = "linux")]
             capture_webkitgtk(platform.inner(), sender, scale, viewport);
@@ -1323,6 +1355,65 @@ fn take_sender(sender: &SnapshotSender) -> Option<tokio::sync::oneshot::Sender<R
 }
 
 type SnapshotSender = Arc<Mutex<Option<tokio::sync::oneshot::Sender<Result<Vec<u8>>>>>>;
+
+/// Capture panel thumbnails without temporarily changing the WebView viewport.
+#[cfg(windows)]
+unsafe fn capture_webview2_preview(
+    platform: tauri::webview::PlatformWebview,
+    sender: SnapshotSender,
+) {
+    use webview2_com::CapturePreviewCompletedHandler;
+    use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG;
+    use windows::Win32::Foundation::HGLOBAL;
+    use windows::Win32::System::Com::StructuredStorage::CreateStreamOnHGlobal;
+    use windows::Win32::System::Com::{STATFLAG_NONAME, STATSTG, STREAM_SEEK_SET};
+
+    let result = (|| -> windows::core::Result<()> {
+        let webview = unsafe { platform.controller().CoreWebView2()? };
+        let stream = unsafe { CreateStreamOnHGlobal(HGLOBAL::default(), true)? };
+        let output = stream.clone();
+        let sender_for_handler = Arc::clone(&sender);
+        let handler = CapturePreviewCompletedHandler::create(Box::new(move |status| {
+            let result = (|| -> Result<Vec<u8>> {
+                status.map_err(|error| Error::Other(format!("preview capture: {error}")))?;
+                let mut stat = STATSTG::default();
+                unsafe {
+                    output
+                        .Stat(&mut stat, STATFLAG_NONAME)
+                        .map_err(|error| Error::Other(format!("preview stream: {error}")))?;
+                    output
+                        .Seek(0, STREAM_SEEK_SET, None)
+                        .map_err(|error| Error::Other(format!("preview stream: {error}")))?;
+                }
+                let length = u32::try_from(stat.cbSize)
+                    .map_err(|_| Error::Other("preview stream is too large".to_string()))?;
+                let mut png = vec![0; length as usize];
+                let mut read = 0;
+                unsafe { output.Read(png.as_mut_ptr().cast(), length, Some(&mut read)) }
+                    .ok()
+                    .map_err(|error| Error::Other(format!("preview stream: {error}")))?;
+                if read != length {
+                    return Err(Error::Other("preview stream is incomplete".to_string()));
+                }
+                Ok(png)
+            })();
+            if let Some(tx) = take_sender(&sender_for_handler) {
+                let _ = tx.send(result);
+            }
+            Ok(())
+        }));
+        unsafe {
+            webview.CapturePreview(
+                COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG,
+                &stream,
+                &handler,
+            )
+        }
+    })();
+    if let Err(error) = result {
+        send_failure(&sender, Error::Other(format!("preview capture: {error}")));
+    }
+}
 
 /// PNG of the WebView2 surface at `scale` output pixels per layout point.
 ///

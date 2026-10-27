@@ -3,8 +3,9 @@ use std::collections::{HashMap, HashSet};
 use aidget::runtime::main_window_state;
 use aidget::runtime::ui::{
     cached_preview, content_token, html_widget_surface, is_relevant, main_widgets, place_frame,
-    record_revision, require_main_window_label, retain_widget_revisions,
-    set_github_token as change_github_token, GithubTokenSummary, MainState, WidgetSummary,
+    record_revision, require_main_window_label, retain_widget_revisions, screenshot_mode,
+    set_github_token as change_github_token, GithubTokenSummary, MainState, ScreenshotMode,
+    WidgetSummary,
 };
 use aidget::settings::{
     save_github_token, save_preferences, GithubToken, Language, MainPage, Theme, TrayClickAction,
@@ -391,6 +392,19 @@ fn cached_preview_rejects_unknown_and_invalid_widgets() {
 
     assert!(cached_preview(&store, "missing").is_err());
     assert!(cached_preview(&store, "../outside").is_err());
+}
+
+#[test]
+fn panel_previews_do_not_request_viewport_scaling() {
+    assert_eq!(screenshot_mode(true, 2.0), ScreenshotMode::PanelPreview);
+}
+
+#[test]
+fn explicit_screenshots_keep_the_requested_scale() {
+    assert_eq!(
+        screenshot_mode(false, 3.0),
+        ScreenshotMode::ViewportScaled(3.0)
+    );
 }
 
 #[test]
