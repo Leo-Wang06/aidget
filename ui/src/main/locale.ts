@@ -4,6 +4,7 @@ export type MessageKey = keyof typeof messages.en;
 const messages = {
   en: {
     communityRefresh: 'Refresh',
+    communityRefreshing: 'Refreshing',
     communityVerified: 'aidget community',
     communityInstall: 'Install',
     communityInstalling: 'Installing',
@@ -121,6 +122,7 @@ const messages = {
   },
   zh: {
     communityRefresh: '刷新',
+    communityRefreshing: '刷新中',
     communityVerified: 'aidget 社区',
     communityInstall: '安装',
     communityInstalling: '安装中',

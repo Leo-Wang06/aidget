@@ -103,6 +103,30 @@ describe('community cards', () => {
     await vi.waitFor(() => expect(root.textContent).toContain('0/week'));
     expect(root.querySelector('iframe')).toBeNull();
   });
+  it('shows refresh progress in the button instead of the status line', async () => {
+    const { root } = page();
+    await vi.waitFor(() => expect(root.querySelector('.community-name')).toBeTruthy());
+    let resolveRefresh!: (value: CommunitySnapshot) => void;
+    mocks.invoke.mockImplementation((command: string) => {
+      if (command === 'community_list') {
+        return new Promise<CommunitySnapshot>((resolve) => {
+          resolveRefresh = resolve;
+        });
+      }
+      return Promise.resolve([]);
+    });
+
+    const refresh = root.querySelector<HTMLButtonElement>('.community-refresh')!;
+    refresh.click();
+
+    expect(refresh.textContent).toBe('Refreshing');
+    expect(refresh.disabled).toBe(true);
+    expect(root.querySelector('.community-status')?.textContent).toBe('');
+
+    resolveRefresh(structuredClone(snapshot));
+    await vi.waitFor(() => expect(refresh.textContent).toBe('Refresh'));
+    expect(refresh.disabled).toBe(false);
+  });
   it('requires details confirmation and sends the pinned main SHA', async () => {
     const { root, installed } = page();
     await vi.waitFor(() => expect(root.querySelector('.community-install')).toBeTruthy());

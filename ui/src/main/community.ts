@@ -244,11 +244,11 @@ export function createCommunityPage(
   }
   function render() {
     heading.textContent = t('communityWidgetsTitle');
-    refresh.textContent = t('communityRefresh');
+    refresh.textContent = t(loading ? 'communityRefreshing' : 'communityRefresh');
     refresh.disabled = loading || !!installing;
     root.setAttribute('aria-busy', String(loading));
     if (loading) {
-      status.textContent = t('loading');
+      status.textContent = '';
     } else if (snapshot) {
       status.textContent =
         installError && !dialog.open
