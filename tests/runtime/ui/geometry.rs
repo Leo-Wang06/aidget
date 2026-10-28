@@ -1,5 +1,30 @@
-use aidget::runtime::ui::place_frame;
+use aidget::runtime::ui::{centered_position, place_frame};
 use aidget::widgets::model::WidgetFrame;
+use tauri::{PhysicalPosition, PhysicalRect, PhysicalSize};
+
+#[test]
+fn centers_a_scaled_window_in_the_selected_physical_work_area() {
+    let area = PhysicalRect {
+        position: PhysicalPosition::new(0, 0),
+        size: PhysicalSize::new(3840, 2088),
+    };
+    assert_eq!(
+        centered_position(&area, PhysicalSize::new(1095, 757), 1.0, 1.5),
+        PhysicalPosition::new(1098, 476)
+    );
+}
+
+#[test]
+fn centers_in_a_work_area_with_negative_coordinates() {
+    let area = PhysicalRect {
+        position: PhysicalPosition::new(-1920, 523),
+        size: PhysicalSize::new(1920, 1032),
+    };
+    assert_eq!(
+        centered_position(&area, PhysicalSize::new(1643, 1136), 1.5, 1.0),
+        PhysicalPosition::new(-1508, 660)
+    );
+}
 
 #[test]
 fn cross_display_frame_is_not_pulled_back() {

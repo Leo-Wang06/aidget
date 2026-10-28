@@ -125,8 +125,10 @@ async fn main_painted(
     window: tauri::WebviewWindow,
     app: tauri::AppHandle,
 ) -> std::result::Result<bool, String> {
+    ui::require_main_window_label(window.label()).map_err(|error| error.to_string())?;
+    let started = ui::start_initial_widgets(&app).map_err(|error| error.to_string())?;
     ui::mark_main_painted(&app, &window).map_err(|error| error.to_string())?;
-    ui::start_initial_widgets(&app).map_err(|error| error.to_string())
+    Ok(started)
 }
 
 /// Return a cached widget preview without capturing the widget WebView.

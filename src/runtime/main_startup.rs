@@ -1,11 +1,15 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+
+const REVEAL_PENDING: u8 = 0;
+const REVEAL_IN_PROGRESS: u8 = 1;
+const REVEAL_COMPLETE: u8 = 2;
 
 /// One-shot state shared by the main window and the background widget host.
 #[derive(Default)]
 pub struct MainStartup {
     page_loaded: AtomicBool,
     main_painted: AtomicBool,
-    revealed: AtomicBool,
+    reveal_state: AtomicU8,
     widgets_started: AtomicBool,
     widgets_announced: AtomicBool,
 }
@@ -15,7 +19,7 @@ impl MainStartup {
     pub fn reset_reveal(&self) {
         self.page_loaded.store(false, Ordering::SeqCst);
         self.main_painted.store(false, Ordering::SeqCst);
-        self.revealed.store(false, Ordering::SeqCst);
+        self.reveal_state.store(REVEAL_PENDING, Ordering::SeqCst);
     }
 
     /// Record that the main document has finished loading.
@@ -28,16 +32,36 @@ impl MainStartup {
         self.main_painted.store(true, Ordering::SeqCst);
     }
 
-    /// Claim the first reveal after both document and paint readiness are met.
-    pub fn claim_ready_reveal(&self) -> bool {
-        self.page_loaded.load(Ordering::SeqCst)
-            && self.main_painted.load(Ordering::SeqCst)
-            && !self.revealed.swap(true, Ordering::SeqCst)
+    /// Attempt the first reveal once both readiness signals arrive; failures can be retried.
+    pub fn try_reveal<E>(
+        &self,
+        reveal: impl FnOnce() -> std::result::Result<(), E>,
+    ) -> std::result::Result<bool, E> {
+        if !self.page_loaded.load(Ordering::SeqCst)
+            || !self.main_painted.load(Ordering::SeqCst)
+            || self
+                .reveal_state
+                .compare_exchange(
+                    REVEAL_PENDING,
+                    REVEAL_IN_PROGRESS,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                )
+                .is_err()
+        {
+            return Ok(false);
+        }
+        if let Err(error) = reveal() {
+            self.reveal_state.store(REVEAL_PENDING, Ordering::SeqCst);
+            return Err(error);
+        }
+        self.reveal_state.store(REVEAL_COMPLETE, Ordering::SeqCst);
+        Ok(true)
     }
 
     /// Whether the main window has already been shown.
     pub fn is_revealed(&self) -> bool {
-        self.revealed.load(Ordering::SeqCst)
+        self.reveal_state.load(Ordering::SeqCst) == REVEAL_COMPLETE
     }
 
     /// Claim the single initial materialization of desktop widget windows.

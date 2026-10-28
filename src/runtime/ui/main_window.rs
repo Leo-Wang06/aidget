@@ -33,7 +33,9 @@ pub fn show_main(app: &AppHandle) -> Result<()> {
 pub fn show_main_now(app: &AppHandle) -> Result<()> {
     if let Some(window) = app.get_webview_window(MAIN_LABEL) {
         if app.state::<UiState>().startup.is_revealed() {
-            reveal_main(app, &window);
+            reveal_main(app, &window)?;
+        } else {
+            reveal_main_if_ready(app, &window)?;
         }
         return Ok(());
     }
@@ -64,7 +66,9 @@ pub fn show_main_now(app: &AppHandle) -> Result<()> {
             if let Err(error) = prime_main(&window) {
                 eprintln!("aidget: cannot prime the main window: {error}");
             }
-            reveal_main_if_ready(&handle_for_load, &window);
+            if let Err(error) = reveal_main_if_ready(&handle_for_load, &window) {
+                eprintln!("aidget: cannot reveal the main window: {error}");
+            }
         }
     });
     #[cfg(target_os = "macos")]
@@ -89,16 +93,17 @@ pub fn show_main_now(app: &AppHandle) -> Result<()> {
     Ok(())
 }
 
-fn reveal_main(app: &AppHandle, window: &WebviewWindow) {
+fn reveal_main(app: &AppHandle, window: &WebviewWindow) -> Result<()> {
     // Widget-only starts stay out of the Dock; opening the main window makes
     // aidget behave like a regular app so the window can take focus.
     #[cfg(target_os = "macos")]
-    let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
-    let _ = window.set_ignore_cursor_events(false);
-    let _ = window.show();
-    let _ = window.unminimize();
-    let _ = window.set_focus();
+    app.set_activation_policy(tauri::ActivationPolicy::Regular)?;
+    window.set_ignore_cursor_events(false)?;
+    window.show()?;
+    window.unminimize()?;
+    window.set_focus()?;
     emit_main(app);
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
@@ -135,22 +140,39 @@ fn prime_main(window: &WebviewWindow) -> Result<()> {
         .map_err(|error| Error::Other(format!("cannot prime main window: {error}")))
 }
 
-fn reveal_main_if_ready(app: &AppHandle, window: &WebviewWindow) {
-    if app.state::<UiState>().startup.claim_ready_reveal() {
-        #[cfg(target_os = "macos")]
-        let _ = set_main_alpha(window, 1.0);
-        #[cfg(not(target_os = "macos"))]
-        let _ = window.center();
-        reveal_main(app, window);
-    }
+fn reveal_main_if_ready(app: &AppHandle, window: &WebviewWindow) -> Result<()> {
+    app.state::<UiState>()
+        .startup
+        .try_reveal(|| -> Result<()> {
+            #[cfg(target_os = "macos")]
+            set_main_alpha(window, 1.0)?;
+            #[cfg(target_os = "windows")]
+            {
+                let monitor = window
+                    .primary_monitor()?
+                    .ok_or_else(|| Error::Other("cannot find the primary monitor".into()))?;
+                // The staged window may have a different DPI than the primary monitor.
+                let position = super::geometry::centered_position(
+                    monitor.work_area(),
+                    window.outer_size()?,
+                    window.scale_factor()?,
+                    monitor.scale_factor(),
+                );
+                window.set_position(position)?;
+            }
+            #[cfg(target_os = "linux")]
+            window.center()?;
+            reveal_main(app, window)?;
+            Ok(())
+        })?;
+    Ok(())
 }
 
 /// Reveal the main window only after the page has loaded and painted its first frame.
 pub fn mark_main_painted(app: &AppHandle, window: &WebviewWindow) -> Result<()> {
     require_main_window_label(window.label())?;
     app.state::<UiState>().startup.mark_main_painted();
-    reveal_main_if_ready(app, window);
-    Ok(())
+    reveal_main_if_ready(app, window)
 }
 
 fn hide_main(app: &AppHandle, window: &WebviewWindow) {

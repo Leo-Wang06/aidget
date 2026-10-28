@@ -25,7 +25,7 @@ pub use content::{content_token, html_paints_own_surface, html_widget_surface, W
 pub use drag::{begin_drag, end_drag, persist_position};
 #[cfg(target_os = "macos")]
 pub use drag::{set_dragging_cursor, wait_for_drag_release};
-pub use geometry::{display_name, displays, physical_geometry, place_frame};
+pub use geometry::{centered_position, display_name, displays, physical_geometry, place_frame};
 pub use main_page::{
     cached_preview, delete_widget, deleted_widget_preview, main_payload, main_widget_preview,
     main_widgets, purge_deleted_widget, restore_widget, set_github_token, set_preferences,

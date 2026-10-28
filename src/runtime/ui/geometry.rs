@@ -1,8 +1,23 @@
 //! Display discovery and widget frame geometry.
-use tauri::AppHandle;
+use tauri::{AppHandle, PhysicalPosition, PhysicalRect, PhysicalSize};
 
 use crate::common::error::Result;
 use crate::widgets::model::{DisplayInfo, WidgetFrame};
+
+/// Center a window in a physical work area after scaling it to the target display.
+pub fn centered_position(
+    area: &PhysicalRect<i32, u32>,
+    window_size: PhysicalSize<u32>,
+    current_scale: f64,
+    target_scale: f64,
+) -> PhysicalPosition<i32> {
+    let width = (window_size.width as f64 * target_scale / current_scale).round() as i64;
+    let height = (window_size.height as f64 * target_scale / current_scale).round() as i64;
+    PhysicalPosition::new(
+        (i64::from(area.position.x) + (i64::from(area.size.width) - width) / 2) as i32,
+        (i64::from(area.position.y) + (i64::from(area.size.height) - height) / 2) as i32,
+    )
+}
 
 /// Returns the physical position of the widget inside its display's work area.
 ///
