@@ -1,4 +1,5 @@
 use std::env;
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use crate::agents::config::{McpFormat, McpTarget};
@@ -136,6 +137,8 @@ pub fn builtin_agents() -> Vec<AgentSpec> {
     ));
 
     let dsh_dir = env_path("DSH_HOME").unwrap_or_else(|| home.join(".dsh"));
+    let dsh_profile_dir = env_path("DSH_PROFILE_DIR");
+    let dsh_profile = env::var_os("DSH_PROFILE").filter(|value| !value.is_empty());
     agents.push(agent(
         "dsh",
         "DeepSeek Harness",
@@ -143,7 +146,7 @@ pub fn builtin_agents() -> Vec<AgentSpec> {
         &["dsh"],
         vec![dsh_dir.clone()],
         Some(mcp(
-            dsh_dir.join("profiles/web/cordis.patch.yml"),
+            dsh_mcp_path(&dsh_dir, dsh_profile_dir.as_deref(), dsh_profile.as_deref()),
             McpFormat::Dsh,
         )),
         Some(dsh_dir.join("skills")),
@@ -509,6 +512,21 @@ pub fn builtin_agents() -> Vec<AgentSpec> {
     ));
 
     agents
+}
+
+/// Resolve the DeepSeek Harness `cordis.patch.yml` for the selected profile.
+///
+/// `DSH_PROFILE_DIR` wins when set. Otherwise the file lives below
+/// `<home>/profiles/<profile>`, defaulting to the historical `web` profile when
+/// neither `DSH_PROFILE` nor `DSH_PROFILE_DIR` is set.
+pub fn dsh_mcp_path(home: &Path, profile_dir: Option<&Path>, profile: Option<&OsStr>) -> PathBuf {
+    if let Some(profile_dir) = profile_dir {
+        return profile_dir.join("cordis.patch.yml");
+    }
+    let profile = profile
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| OsStr::new("web"));
+    home.join("profiles").join(profile).join("cordis.patch.yml")
 }
 
 fn agent(
