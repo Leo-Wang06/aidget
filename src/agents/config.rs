@@ -130,10 +130,10 @@ pub fn set_mcp(
 /// Write or remove the DSH MCP entry in the home patch file.
 ///
 /// The home layer is applied after every profile, so it must be the only
-/// aidget entry. Legacy aidget inserts are collected first, the home file is
-/// written, and only then are the profile files changed. If a profile write
-/// fails, the home file is restored so the previous working configuration
-/// remains intact.
+/// aidget entry. Legacy aidget inserts are removed from the profile files
+/// first, and the home file is written only after every profile write
+/// succeeds. If the home write fails, the profile files are restored so the
+/// previous working configuration remains intact.
 fn set_dsh_mcp(
     target: &McpTarget,
     command: &str,
@@ -173,21 +173,24 @@ fn set_dsh_mcp(
         .is_some_and(|next| current.as_deref() != Some(next));
 
     let profile_changes = collect_dsh_profile_changes(target)?;
-
-    if global_change {
-        if let Some(text) = &current {
-            backup_bytes(backup_root, agent, &target.path, text.as_bytes())?;
-        }
-        if let Some(next) = &global_next {
-            atomic_write(&target.path, next.as_bytes())?;
-        }
+    if let Err(error) = apply_dsh_profile_changes(&profile_changes, backup_root) {
+        return Err(error);
     }
 
-    if let Err(error) = apply_dsh_profile_changes(&profile_changes, backup_root) {
-        if global_change {
-            restore_path(&target.path, current.as_deref());
+    if global_change {
+        let result = (|| -> Result<()> {
+            if let Some(text) = &current {
+                backup_bytes(backup_root, agent, &target.path, text.as_bytes())?;
+            }
+            if let Some(next) = &global_next {
+                atomic_write(&target.path, next.as_bytes())?;
+            }
+            Ok(())
+        })();
+        if let Err(error) = result {
+            rollback_dsh_profile_changes(&profile_changes);
+            return Err(error);
         }
-        return Err(error);
     }
     Ok(())
 }
@@ -209,7 +212,7 @@ fn collect_dsh_profile_changes(target: &McpTarget) -> Result<Vec<DshProfileChang
     let mut changes = Vec::new();
     for entry in fs::read_dir(&profiles)? {
         let entry = entry?;
-        if !entry.file_type()?.is_dir() {
+        if !entry.path().is_dir() {
             continue;
         }
         let path = entry.path().join("cordis.patch.yml");
@@ -243,12 +246,22 @@ fn collect_dsh_profile_changes(target: &McpTarget) -> Result<Vec<DshProfileChang
 fn apply_dsh_profile_changes(changes: &[DshProfileChange], backup_root: &Path) -> Result<()> {
     let mut applied = 0;
     for change in changes {
-        let result = backup_bytes(backup_root, "dsh", &change.path, change.original.as_bytes())
-            .and_then(|()| atomic_write(&change.path, change.next.as_bytes()));
+        let label = change
+            .path
+            .parent()
+            .and_then(Path::file_name)
+            .and_then(|name| name.to_str())
+            .map(|name| format!("dsh-{name}"))
+            .unwrap_or_else(|| "dsh".to_string());
+        let result = backup_bytes(
+            backup_root,
+            &label,
+            &change.path,
+            change.original.as_bytes(),
+        )
+        .and_then(|()| atomic_write(&change.path, change.next.as_bytes()));
         if let Err(error) = result {
-            for previous in changes[..applied].iter().rev() {
-                let _ = atomic_write(&previous.path, previous.original.as_bytes());
-            }
+            rollback_dsh_profile_changes(&changes[..applied]);
             return Err(error);
         }
         applied += 1;
@@ -256,14 +269,9 @@ fn apply_dsh_profile_changes(changes: &[DshProfileChange], backup_root: &Path) -
     Ok(())
 }
 
-fn restore_path(path: &Path, original: Option<&str>) {
-    match original {
-        Some(text) => {
-            let _ = atomic_write(path, text.as_bytes());
-        }
-        None => {
-            let _ = fs::remove_file(path);
-        }
+fn rollback_dsh_profile_changes(changes: &[DshProfileChange]) {
+    for change in changes.iter().rev() {
+        let _ = atomic_write(&change.path, change.original.as_bytes());
     }
 }
 

@@ -214,6 +214,33 @@ fn dsh_cleanup_preserves_sibling_items_when_aidget_is_not_first() {
     assert!(mcp_state(&target, "/new").unwrap().installed);
 }
 
+#[test]
+fn dsh_cleanup_preserves_outer_patch_fields() {
+    let temp = tempdir().unwrap();
+    let home = temp.path().join("dsh-home");
+    let profile = home.join("profiles/desktop");
+    fs::create_dir_all(&profile).unwrap();
+    let profile_patch = profile.join("cordis.patch.yml");
+    fs::write(
+        &profile_patch,
+        "- id: wrapper\n  name: \"@example/wrapper\"\n  insert:\n    - id: magpie-mcp-aidget\n      name: \"@deepseek-ai/dsh-mcp-client\"\n      config:\n        serverName: aidget\n        transport: stdio\n        command: /old\n        args:\n          - mcp\n    - id: other\n      name: \"@example/other\"\n      config:\n        value: 1\n",
+    )
+    .unwrap();
+    let target = McpTarget {
+        path: home.join("cordis.patch.yml"),
+        format: McpFormat::Dsh,
+    };
+
+    set_mcp(&target, "/new", true, temp.path(), "dsh").unwrap();
+
+    let text = fs::read_to_string(&profile_patch).unwrap();
+    assert!(!text.contains("magpie-mcp-aidget"));
+    assert!(text.contains("id: wrapper"));
+    assert!(text.contains("@example/wrapper"));
+    assert!(text.contains("id: other"));
+    assert!(text.contains("@example/other"));
+}
+
 #[cfg(windows)]
 #[test]
 fn dsh_cleanup_failure_keeps_the_working_profile_entry() {
