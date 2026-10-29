@@ -164,3 +164,76 @@ fn dsh_home_entry_replaces_profile_entry_and_preserves_neighbors() {
         .unwrap()
         .contains("magpie-mcp-aidget"));
 }
+
+fn profile_with_inserts(temp: &std::path::Path, inserts: &str) -> (McpTarget, std::path::PathBuf) {
+    let home = temp.join("dsh-home");
+    let profile = home.join("profiles/desktop");
+    fs::create_dir_all(&profile).unwrap();
+    let profile_patch = profile.join("cordis.patch.yml");
+    fs::write(&profile_patch, format!("- insert:\n{inserts}")).unwrap();
+    (
+        McpTarget {
+            path: home.join("cordis.patch.yml"),
+            format: McpFormat::Dsh,
+        },
+        profile_patch,
+    )
+}
+
+#[test]
+fn dsh_cleanup_preserves_sibling_items_when_aidget_is_first() {
+    let temp = tempdir().unwrap();
+    let (target, profile_patch) = profile_with_inserts(
+        temp.path(),
+        "  - id: magpie-mcp-aidget\n    name: \"@deepseek-ai/dsh-mcp-client\"\n    config:\n      serverName: aidget\n      transport: stdio\n      command: /old\n      args:\n        - mcp\n  - id: other\n    name: \"@example/other\"\n    config:\n      value: 1\n",
+    );
+
+    set_mcp(&target, "/new", true, temp.path(), "dsh").unwrap();
+
+    let text = fs::read_to_string(&profile_patch).unwrap();
+    assert!(!text.contains("magpie-mcp-aidget"));
+    assert!(text.contains("id: other"));
+    assert!(text.contains("@example/other"));
+    assert!(mcp_state(&target, "/new").unwrap().installed);
+}
+
+#[test]
+fn dsh_cleanup_preserves_sibling_items_when_aidget_is_not_first() {
+    let temp = tempdir().unwrap();
+    let (target, profile_patch) = profile_with_inserts(
+        temp.path(),
+        "  - id: other\n    name: \"@example/other\"\n    config:\n      value: 1\n  - id: magpie-mcp-aidget\n    name: \"@deepseek-ai/dsh-mcp-client\"\n    config:\n      serverName: aidget\n      transport: stdio\n      command: /old\n      args:\n        - mcp\n",
+    );
+
+    set_mcp(&target, "/new", true, temp.path(), "dsh").unwrap();
+
+    let text = fs::read_to_string(&profile_patch).unwrap();
+    assert!(!text.contains("magpie-mcp-aidget"));
+    assert!(text.contains("id: other"));
+    assert!(text.contains("@example/other"));
+    assert!(mcp_state(&target, "/new").unwrap().installed);
+}
+
+#[cfg(windows)]
+#[test]
+fn dsh_cleanup_failure_keeps_the_working_profile_entry() {
+    let temp = tempdir().unwrap();
+    let (target, profile_patch) = profile_with_inserts(
+        temp.path(),
+        "  - id: magpie-mcp-aidget\n    name: \"@deepseek-ai/dsh-mcp-client\"\n    config:\n      serverName: aidget\n      transport: stdio\n      command: /old\n      args:\n        - mcp\n",
+    );
+    let original = fs::read_to_string(&profile_patch).unwrap();
+    fs::write(&target.path, "[]\n").unwrap();
+    let mut permissions = fs::metadata(&target.path).unwrap().permissions();
+    permissions.set_readonly(true);
+    fs::set_permissions(&target.path, permissions).unwrap();
+
+    let result = set_mcp(&target, "/new", true, temp.path(), "dsh");
+
+    assert!(result.is_err());
+    assert_eq!(fs::read_to_string(&profile_patch).unwrap(), original);
+
+    let mut permissions = fs::metadata(&target.path).unwrap().permissions();
+    permissions.set_readonly(false);
+    fs::set_permissions(&target.path, permissions).unwrap();
+}
