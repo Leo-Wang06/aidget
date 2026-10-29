@@ -88,6 +88,18 @@ pub fn set_mcp(
     backup_root: &Path,
     agent: &str,
 ) -> Result<()> {
+    if target.format == McpFormat::Dsh {
+        if target.path.exists() {
+            let text = fs::read_to_string(&target.path)?;
+            if read_mcp_text(target, &text, command)? == Some(false) {
+                return Err(Error::InvalidParams(format!(
+                    "{} already has a different `aidget` MCP entry",
+                    target.path.display()
+                )));
+            }
+        }
+        remove_dsh_profile_entries(target, backup_root)?;
+    }
     let current = if target.path.exists() {
         Some(fs::read_to_string(&target.path)?)
     } else {
@@ -122,6 +134,48 @@ pub fn set_mcp(
         backup_bytes(backup_root, agent, &target.path, text.as_bytes())?;
     }
     atomic_write(&target.path, next.as_bytes())
+}
+
+/// Remove aidget inserts that older aidget versions wrote into DSH profile
+/// patch files. DSH applies the home patch after every profile, so leaving the
+/// same insert in both layers registers the server twice.
+fn remove_dsh_profile_entries(target: &McpTarget, backup_root: &Path) -> Result<()> {
+    let Some(home) = target.path.parent() else {
+        return Ok(());
+    };
+    let profiles = home.join("profiles");
+    if !profiles.is_dir() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(&profiles)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        let path = entry.path().join("cordis.patch.yml");
+        if !path.is_file() {
+            continue;
+        }
+        let text = fs::read_to_string(&path)?;
+        if !text.contains("magpie-mcp-aidget") {
+            continue;
+        }
+        let document: serde_yaml::Value = serde_yaml::from_str(&text)
+            .map_err(|error| Error::InvalidParams(format!("{}: {error}", path.display())))?;
+        let Some(entries) = document.as_sequence() else {
+            continue;
+        };
+        if !entries.iter().any(is_aidget_dsh_insert) {
+            continue;
+        }
+        let next = edit_dsh(&path, Some(&text), "", false)?;
+        if next == text {
+            continue;
+        }
+        backup_bytes(backup_root, "dsh", &path, text.as_bytes())?;
+        atomic_write(&path, next.as_bytes())?;
+    }
+    Ok(())
 }
 
 fn read_mcp(target: &McpTarget, command: &str) -> Result<Option<bool>> {

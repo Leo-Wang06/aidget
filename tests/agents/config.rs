@@ -112,3 +112,55 @@ fn yaml_and_dsh_formats_round_trip() {
     set_mcp(&target, "/a", false, temp.path(), "dsh").unwrap();
     assert!(!mcp_state(&target, "/a").unwrap().installed);
 }
+
+#[test]
+fn dsh_home_entry_replaces_profile_entry_and_preserves_neighbors() {
+    let temp = tempdir().unwrap();
+    let home = temp.path().join("dsh-home");
+    let profile = home.join("profiles/desktop");
+    fs::create_dir_all(&profile).unwrap();
+    let profile_patch = profile.join("cordis.patch.yml");
+    fs::write(
+        &profile_patch,
+        "- id: keep\n  name: \"@example/keep\"\n  config:\n    value: 1\n- insert:\n  - id: magpie-mcp-aidget\n    name: \"@deepseek-ai/dsh-mcp-client\"\n    config:\n      serverName: aidget\n      transport: stdio\n      command: /old\n      args:\n        - mcp\n",
+    )
+    .unwrap();
+    let target = McpTarget {
+        path: home.join("cordis.patch.yml"),
+        format: McpFormat::Dsh,
+    };
+    fs::write(
+        &target.path,
+        "- id: keep-global\n  name: \"@example/global\"\n",
+    )
+    .unwrap();
+
+    set_mcp(&target, "/new", true, temp.path(), "dsh").unwrap();
+
+    assert!(mcp_state(&target, "/new").unwrap().installed);
+    let global_text = fs::read_to_string(&target.path).unwrap();
+    assert!(global_text.contains("keep-global"));
+    assert!(global_text.contains("@example/global"));
+    let profile_text = fs::read_to_string(&profile_patch).unwrap();
+    assert!(!profile_text.contains("magpie-mcp-aidget"));
+    assert!(profile_text.contains("id: keep"));
+    assert!(profile_text.contains("@example/keep"));
+
+    // A legacy profile entry next to the new home entry must be removed too.
+    fs::write(
+        &profile_patch,
+        "- id: keep\n  name: \"@example/keep\"\n  config:\n    value: 1\n- insert:\n  - id: magpie-mcp-aidget\n    name: \"@deepseek-ai/dsh-mcp-client\"\n    config:\n      serverName: aidget\n      transport: stdio\n      command: /old\n      args:\n        - mcp\n",
+    )
+    .unwrap();
+    set_mcp(&target, "/new", true, temp.path(), "dsh").unwrap();
+    assert!(mcp_state(&target, "/new").unwrap().installed);
+    assert!(!fs::read_to_string(&profile_patch)
+        .unwrap()
+        .contains("magpie-mcp-aidget"));
+
+    set_mcp(&target, "/new", false, temp.path(), "dsh").unwrap();
+    assert!(!mcp_state(&target, "/new").unwrap().installed);
+    assert!(!fs::read_to_string(&profile_patch)
+        .unwrap()
+        .contains("magpie-mcp-aidget"));
+}
