@@ -158,9 +158,16 @@ fn set_dsh_mcp(
         )));
     }
     let installed = state == Some(true);
+    let duplicate_home_entry = enabled
+        && installed
+        && current
+            .as_deref()
+            .map(dsh_has_duplicate_aidget)
+            .transpose()?
+            .unwrap_or(false);
 
     let global_next = if enabled {
-        (!installed)
+        (!installed || duplicate_home_entry)
             .then(|| edit_dsh(&target.path, current.as_deref(), command, true))
             .transpose()?
     } else {
@@ -188,7 +195,11 @@ fn set_dsh_mcp(
             Ok(())
         })();
         if let Err(error) = result {
-            rollback_dsh_profile_changes(&profile_changes);
+            if let Err(rollback_error) = rollback_dsh_profile_changes(&profile_changes) {
+                return Err(Error::Other(format!(
+                    "{error}; profile rollback failed: {rollback_error}"
+                )));
+            }
             return Err(error);
         }
     }
@@ -220,12 +231,15 @@ fn collect_dsh_profile_changes(target: &McpTarget) -> Result<Vec<DshProfileChang
             continue;
         }
         let original = fs::read_to_string(&path)?;
-        if !original.contains("magpie-mcp-aidget") {
-            continue;
-        }
         let document: serde_yaml::Value = serde_yaml::from_str(&original)
             .map_err(|error| Error::InvalidParams(format!("{}: {error}", path.display())))?;
         let Some(entries) = document.as_sequence() else {
+            if dsh_entry_has_aidget(&document) {
+                return Err(Error::InvalidParams(format!(
+                    "{}: DSH profile patch root must be a list",
+                    path.display()
+                )));
+            }
             continue;
         };
         if !entries.iter().any(dsh_entry_has_aidget) {
@@ -261,7 +275,11 @@ fn apply_dsh_profile_changes(changes: &[DshProfileChange], backup_root: &Path) -
         )
         .and_then(|()| atomic_write(&change.path, change.next.as_bytes()));
         if let Err(error) = result {
-            rollback_dsh_profile_changes(&changes[..applied]);
+            if let Err(rollback_error) = rollback_dsh_profile_changes(&changes[..applied]) {
+                return Err(Error::Other(format!(
+                    "{error}; profile rollback failed: {rollback_error}"
+                )));
+            }
             return Err(error);
         }
         applied += 1;
@@ -269,10 +287,14 @@ fn apply_dsh_profile_changes(changes: &[DshProfileChange], backup_root: &Path) -
     Ok(())
 }
 
-fn rollback_dsh_profile_changes(changes: &[DshProfileChange]) {
+fn rollback_dsh_profile_changes(changes: &[DshProfileChange]) -> Result<()> {
+    let mut rollback_error = None;
     for change in changes.iter().rev() {
-        let _ = atomic_write(&change.path, change.original.as_bytes());
+        if let Err(error) = atomic_write(&change.path, change.original.as_bytes()) {
+            rollback_error = Some(error);
+        }
     }
+    rollback_error.map_or(Ok(()), Err)
 }
 
 fn read_mcp(target: &McpTarget, command: &str) -> Result<Option<bool>> {
@@ -385,8 +407,12 @@ fn edit_yaml(path: &Path, current: Option<&str>, command: &str, enabled: bool) -
 
 fn edit_dsh(path: &Path, current: Option<&str>, command: &str, enabled: bool) -> Result<String> {
     let text = current.unwrap_or("[]\n");
-    let mut document: serde_yaml::Value = serde_yaml::from_str(text)
-        .map_err(|error| Error::InvalidParams(format!("{}: {error}", path.display())))?;
+    let mut document: serde_yaml::Value = if text.trim().is_empty() {
+        serde_yaml::Value::Sequence(Vec::new())
+    } else {
+        serde_yaml::from_str(text)
+            .map_err(|error| Error::InvalidParams(format!("{}: {error}", path.display())))?
+    };
     let list = document
         .as_sequence_mut()
         .ok_or_else(|| Error::InvalidParams("dsh patch root is not a list".to_string()))?;
@@ -559,11 +585,38 @@ fn yaml_command_matches(entry: &serde_yaml::Value, command: &str) -> bool {
             .is_some_and(|args| args == &[serde_yaml::Value::String("mcp".to_string())])
 }
 
-fn dsh_has_aidget(text: &str, command: &str) -> Result<Option<bool>> {
-    let document: serde_yaml::Value = serde_yaml::from_str(text)
-        .map_err(|error| Error::InvalidParams(format!("dsh patch: {error}")))?;
+fn dsh_has_duplicate_aidget(text: &str) -> Result<bool> {
+    let document: serde_yaml::Value = if text.trim().is_empty() {
+        serde_yaml::Value::Sequence(Vec::new())
+    } else {
+        serde_yaml::from_str(text)
+            .map_err(|error| Error::InvalidParams(format!("dsh patch: {error}")))?
+    };
     let Some(entries) = document.as_sequence() else {
-        return Ok(None);
+        return Err(Error::InvalidParams(
+            "dsh patch root is not a list".to_string(),
+        ));
+    };
+    Ok(entries
+        .iter()
+        .filter_map(|entry| entry.get("insert").and_then(serde_yaml::Value::as_sequence))
+        .flat_map(|items| items.iter())
+        .filter(|item| is_aidget_dsh_item(item))
+        .count()
+        > 1)
+}
+
+fn dsh_has_aidget(text: &str, command: &str) -> Result<Option<bool>> {
+    let document: serde_yaml::Value = if text.trim().is_empty() {
+        serde_yaml::Value::Sequence(Vec::new())
+    } else {
+        serde_yaml::from_str(text)
+            .map_err(|error| Error::InvalidParams(format!("dsh patch: {error}")))?
+    };
+    let Some(entries) = document.as_sequence() else {
+        return Err(Error::InvalidParams(
+            "dsh patch root is not a list".to_string(),
+        ));
     };
     let mut found = false;
     for entry in entries {

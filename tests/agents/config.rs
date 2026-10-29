@@ -114,6 +114,57 @@ fn yaml_and_dsh_formats_round_trip() {
 }
 
 #[test]
+fn dsh_enable_deduplicates_matching_home_entries() {
+    let temp = tempdir().unwrap();
+    let path = temp.path().join("cordis.patch.yml");
+    let entry = "- insert:\n  - id: magpie-mcp-aidget\n    config:\n      command: /new\n      args: [mcp]\n";
+    fs::write(&path, format!("{entry}{entry}")).unwrap();
+    let target = McpTarget {
+        path,
+        format: McpFormat::Dsh,
+    };
+
+    set_mcp(&target, "/new", true, temp.path(), "dsh").unwrap();
+
+    let text = fs::read_to_string(&target.path).unwrap();
+    assert_eq!(text.matches("magpie-mcp-aidget").count(), 1);
+}
+
+#[test]
+fn dsh_home_patch_with_non_list_root_is_rejected() {
+    let temp = tempdir().unwrap();
+    let path = temp.path().join("cordis.patch.yml");
+    let original = "mcp: {}\n";
+    fs::write(&path, original).unwrap();
+    let target = McpTarget {
+        path,
+        format: McpFormat::Dsh,
+    };
+
+    assert!(mcp_state(&target, "/new").unwrap().conflict.is_some());
+    assert!(set_mcp(&target, "/new", true, temp.path(), "dsh").is_err());
+    assert_eq!(fs::read_to_string(&target.path).unwrap(), original);
+}
+
+#[test]
+fn dsh_empty_home_patch_is_treated_as_an_empty_list() {
+    let temp = tempdir().unwrap();
+    let path = temp.path().join("cordis.patch.yml");
+    fs::write(&path, "\n  \n").unwrap();
+    let target = McpTarget {
+        path,
+        format: McpFormat::Dsh,
+    };
+
+    let state = mcp_state(&target, "/new").unwrap();
+    assert!(!state.installed);
+    assert_eq!(state.conflict, None);
+
+    set_mcp(&target, "/new", true, temp.path(), "dsh").unwrap();
+    assert!(mcp_state(&target, "/new").unwrap().installed);
+}
+
+#[test]
 fn dsh_home_entry_replaces_profile_entry_and_preserves_neighbors() {
     let temp = tempdir().unwrap();
     let home = temp.path().join("dsh-home");
@@ -178,6 +229,41 @@ fn profile_with_inserts(temp: &std::path::Path, inserts: &str) -> (McpTarget, st
         },
         profile_patch,
     )
+}
+
+#[test]
+fn dsh_profile_non_list_root_is_rejected_before_home_write() {
+    let temp = tempdir().unwrap();
+    let home = temp.path().join("dsh-home");
+    let profile = home.join("profiles/desktop");
+    fs::create_dir_all(&profile).unwrap();
+    let profile_patch = profile.join("cordis.patch.yml");
+    let original =
+        "insert:\n  - id: magpie-mcp-aidget\n    config:\n      command: /old\n      args: [mcp]\n";
+    fs::write(&profile_patch, original).unwrap();
+    let target = McpTarget {
+        path: home.join("cordis.patch.yml"),
+        format: McpFormat::Dsh,
+    };
+    fs::write(&target.path, "[]\n").unwrap();
+
+    assert!(set_mcp(&target, "/new", true, temp.path(), "dsh").is_err());
+    assert_eq!(fs::read_to_string(&target.path).unwrap(), "[]\n");
+    assert_eq!(fs::read_to_string(&profile_patch).unwrap(), original);
+}
+
+#[test]
+fn dsh_cleanup_finds_escaped_aidget_ids() {
+    let temp = tempdir().unwrap();
+    let (target, profile_patch) = profile_with_inserts(
+        temp.path(),
+        "  - id: \\\"\\u006dagpie-mcp-aidget\\\"\n    name: \\\"@deepseek-ai/dsh-mcp-client\\\"\n    config:\n      serverName: aidget\n      transport: stdio\n      command: /old\n      args:\n        - mcp\n",
+    );
+
+    set_mcp(&target, "/new", true, temp.path(), "dsh").unwrap();
+
+    let text = fs::read_to_string(&profile_patch).unwrap();
+    assert!(!text.contains("magpie-mcp-aidget"));
 }
 
 #[test]
